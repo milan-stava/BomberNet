@@ -8,4 +8,4 @@ flags='+zx -lndos -zorg=24000 -pragma-define:REGISTER_SP=65535 -pragma-define:CL
 zcc $flags -o build/spectranet/bomber $core $common c/platform/zx/tcp_spectranet.c
 cp ports/esp01/WifiBios20_MB_EL.cod WifiBios20_MB_EL.cod
 # Compile before packing a TAP, so the complete linker map can be inspected.
-zcc $flags -Iports/esp01 -o build/esp01/bomber $core $common ports/esp01/tcp_esp_at.c ports/esp01/esp_uart_bios.c
+zcc $flags -Iports/esp01 -o build/esp01/bomber $core $common ports/esp01/tcp_esp_small.c

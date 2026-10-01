@@ -32,6 +32,9 @@ uint8_t esp_uart_write(uint8_t b) {
     if(no_response) return 1;
     if(sscanf(cmd,"AT+CIPSEND=%u",&n)==1) {
       send_left=n;text("\r\nOK\r\n>");
+    } else if(!strcmp(cmd,"AT+CIPRECVLEN?\r\n")) {
+      snprintf(header,sizeof(header),"\r\n+CIPRECVLEN:%u,0,0,0,0\r\nOK\r\n",(unsigned)sizeof(payload)-payload_pos);
+      text(header);
     } else if(sscanf(cmd,"AT+CIPRECVDATA=%u",&n)==1) {
       unsigned rest=sizeof(payload)-payload_pos;
       if(n>rest)n=rest;

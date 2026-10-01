@@ -13,10 +13,10 @@
 #define E_TIMEOUT 2
 #define E_PARAM 3
 static uint8_t rx[RX_SIZE];
-static uint16_t head, tail, remain, deadline;
+static uint16_t head, tail, remain, deadline, available;
 static uint8_t line[96], llen, failed, closed, opened, pending;
 static uint8_t busy, result, prompt, discard, ready, awaiting_prompt;
-static uint8_t error_code;
+static uint8_t error_code, querying, query_seen;
 static uint16_t read_commands;
 static uint8_t tx[128];
 static uint16_t txlen, txpos;
@@ -32,12 +32,25 @@ static void start(const char *cmd) {
 static void finish_line(void) {
   line[llen]=0;
   if (!strcmp((char*)line,"OK") || !strcmp((char*)line,"SEND OK")) {
-    if (busy && !awaiting_prompt) {result=1; busy=0;}
+    if (busy && !awaiting_prompt) {
+      result=1; busy=0;
+      if (querying && !query_seen) fault();
+      querying=0;
+    }
   } else if (!strcmp((char*)line,"ERROR") || !strcmp((char*)line,"FAIL") ||
              !strcmp((char*)line,"SEND FAIL") || !strncmp((char*)line,"busy",4)) {
     result=2; busy=0; error_code=1;
   } else if (!strcmp((char*)line,"CLOSED") || !strcmp((char*)line,"WIFI DISCONNECT")) {
     closed=1;
+  } else if (!strncmp((char*)line,"+CIPRECVLEN:",12)) {
+    uint8_t i=12;
+    uint16_t n=0;
+    while (line[i]>='0' && line[i]<='9') {
+      if (n>6553 || (n==6553 && line[i]>'5')) {fault(); return;}
+      n=(uint16_t)((n<<3)+(n<<1)+line[i++]-'0');
+    }
+    if (i==12 || (line[i] && line[i]!=',')) {fault(); return;}
+    available=n; pending=n ? 2 : 0; query_seen=1;
   } else if (!strncmp((char*)line,"+IPD,",5)) {
     pending=1;
   }
@@ -58,13 +71,14 @@ static void consume(uint8_t b) {
       (line[12]==',' || line[12]==':') &&
       ((line[12]==',' && b==':') || (line[12]==':' && b==','))) {
     uint8_t i;
-    uint32_t n=0;
+    uint16_t n=0;
     for (i=13;i<llen;i++) {
       if (line[i]<'0' || line[i]>'9') {fault(); return;}
-      n=n*10+line[i]-'0';
+      if(n>CHUNK/10) {fault(); return;}
+      n=(uint16_t)((n<<3)+(n<<1)+line[i]-'0');
       if (n>CHUNK) {fault(); return;}
     }
-    if (n>(uint32_t)(RX_SIZE-used())) {fault(); return;}
+    if (n>(uint16_t)(RX_SIZE-used())) {fault(); return;}
     remain=(uint16_t)n; pending=(n!=0); llen=0; return;
   }
   if (llen==sizeof(line)-1) {discard=1; llen=0; return;}
@@ -120,7 +134,7 @@ uint8_t tcp_open(const char *host,uint16_t port) {
   if (!tcp_present()) return E_IO;
   tcp_close();
   failed=busy=closed=pending=discard=llen=result=awaiting_prompt=0;
-  remain=head=tail=0; txlen=txpos=0; error_code=0; read_commands=0;
+  remain=head=tail=0; txlen=txpos=0; error_code=querying=query_seen=0; available=0; read_commands=0;
   if ((e=command("ATE0\r\n"))!=0) return e;
   /* Wi-Fi credentials are deliberately retained from existing ESP setup. */
   if ((e=command("AT+CIPMUX=0\r\n"))!=0) return e;
@@ -132,7 +146,7 @@ uint8_t tcp_open(const char *host,uint16_t port) {
   *p++='"'; *p++=','; p=put_u(p,port); strcpy(p,"\r\n");
   if ((e=command(cmd))!=0) return e;
   if (closed) return E_IO;
-  opened=1; pending=1; return 0;
+  opened=1; pending=0; return 0;
 }
 uint8_t tcp_send(const uint8_t *buf,uint16_t n) {
   char cmd[32], *p;
@@ -164,7 +178,11 @@ int16_t tcp_recv(uint8_t *buf,uint16_t max) {
   if (!opened || (closed && !busy && !remain && !pending)) return -1;
   if (!busy && result==2) {fault(); return -1;}
   if (max && !busy && pending) {
-    count=RX_SIZE-used(); if(count>CHUNK) count=CHUNK;
+    if (pending==1) {
+      querying=1; query_seen=0; start("AT+CIPRECVLEN?\r\n"); pump(); return 0;
+    }
+    count=available; if(count>CHUNK) count=CHUNK;
+    if(count>RX_SIZE-used()) count=RX_SIZE-used();
     strcpy(cmd,"AT+CIPRECVDATA="); p=put_u(cmd+15,count); strcpy(p,"\r\n");
     pending=0; start(cmd); ++read_commands; pump();
   }
