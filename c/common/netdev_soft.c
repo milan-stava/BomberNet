@@ -533,6 +533,7 @@ static void handle_line(const char *l) {
     else { s_slot = (uint8_t)v; s_state = NETST_INROOM; }
     s_members = 1; s_ready = 0; s_started = 0; s_full = 0;
     frames_clear();
+    mq_head=mq_tail=0; s_err=0;
     if (pend) pend_done = 1;
   } else if (!strcmp(op, "members")) {
     s_members = (uint8_t)jint(l, "\"count\"", s_members);
@@ -662,6 +663,7 @@ uint8_t net_leave(void) {
   ws_close();
   s_state = net_device ? NETST_READY : NETST_NOLINK;
   s_started = 0; s_members = 0; s_ready = 0; s_full = 0;
+  mq_head=mq_tail=0; s_err=0;
   return 0;
 }
 

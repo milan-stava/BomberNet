@@ -8,7 +8,7 @@ from pathlib import Path
 import test_bank128 as base
 from test_bank128 import S
 
-names=['_plat_frame_sync','_flush_screen','_composite_map','_input_poll',
+names=['_plat_tone','_players_anim_step','_plat_frame_sync','_flush_screen','_composite_map','_input_poll',
        '_net_lockstep_poll','_tcp_send','_tcp_recv','_net_send','_net_hash',
        '_update_bombs','_enemy_ai','_draw_players','_hash_frame_step']
 try:S('_composite_frame');names.append('_composite_frame')

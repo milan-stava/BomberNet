@@ -14,7 +14,7 @@
 uint8_t ws_open_now, ws_lost;
 
 #ifdef ESP_FAST128
-static uint8_t rx[192];
+static uint8_t rx[64];
 #else
 static uint8_t rx[64];                     /* bytes from the socket not yet parsed */
 #endif

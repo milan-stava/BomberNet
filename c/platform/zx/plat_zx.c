@@ -195,6 +195,25 @@ static uint8_t last_tick;
 #ifdef ESP_FAST128
 extern void net_background(void);
 #endif
+#ifdef ESP_FAST128
+static uint8_t ay_active, ay_start, ay_ticks;
+static void zx_ay(uint16_t rv) __z88dk_fastcall __naked {
+  __asm
+    ld e,h
+    ld a,l
+    ld bc,0xfffd
+    out (c),a
+    ld b,0xbf
+    out (c),e
+    ret
+  __endasm;
+}
+static void ay_update(void) {
+  if (ay_active && (!net_active || (uint8_t)(*FRAMES_LO-ay_start)>=ay_ticks)) {
+    zx_ay(8); ay_active=0;
+  }
+}
+#endif
 void plat_frame_sync(void) {                       /* a game frame is three TV frames */
   uint8_t late = (uint8_t)(*FRAMES_LO - last_tick) >= 3;
   while ((uint8_t)(*FRAMES_LO - last_tick) < 3) {
@@ -203,6 +222,9 @@ void plat_frame_sync(void) {                       /* a game frame is three TV f
 #endif
   }
   last_tick = *FRAMES_LO;
+#ifdef ESP_FAST128
+  ay_update();
+#endif
   /* A new TV frame has just begun: the beam is in the top border (64 lines,
    * 14,000 T-states) and the joystick ports can be read. After a frame that
    * ran long the beam may be anywhere: the last readings stay. */
@@ -252,6 +274,17 @@ bp_wait:
 void plat_tone(uint16_t ratio, uint8_t len) {
   uint16_t half;
   if (ratio < 0x0100) ratio = 0x0100;
+#ifdef ESP_FAST128
+  if (net_active) {
+    /* Hardware AY plays concurrently; never busy-wait for remote footsteps. */
+    half=(ratio>>3)-(ratio>>5);
+    zx_ay((half<<8));
+    zx_ay((half&0x0f00)|1);
+    zx_ay(0x3e07); zx_ay(0x0c08);
+    ay_start=*FRAMES_LO; ay_ticks=(len>>4)+1; ay_active=1;
+    return;
+  }
+#endif
   half = (ratio >> 4) - (ratio >> 9);              /* ratio * 1.579 / 26 */
   tone_half = half > 3 ? half - 2 : 1;             /* less the T-states around the wait */
   tone_count = ((uint16_t)len * 529) / (ratio >> 2);

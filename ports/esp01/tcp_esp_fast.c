@@ -397,6 +397,13 @@ es_clear:
     ret
 ; Discard old replies only when no transaction is active. Bounded 2048 bytes.
 es_drain:
+    ; BIOS 2.0 hardware FIFO reset. Also clears an old overflow condition.
+    ld bc,0x7c3b
+    ld a,0x30
+    out (c),a
+    inc b
+    ld a,1
+    out (c),a
     ld de,2048
     ld l,4
 es_drain_loop:
