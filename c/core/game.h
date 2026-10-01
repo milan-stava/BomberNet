@@ -272,9 +272,8 @@ void reveal_exit(void);
 void draw_bonus(void);
 void draw_exit(void);
 
-#endif
-
-
 #ifdef ESP_FAST128
 void composite_frame(void);
+#endif
+
 #endif

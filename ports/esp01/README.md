@@ -3,7 +3,7 @@
 ESP-01 port for MB03+ and eLeMeNt, based on the UART services documented in
 WiFi BIOS 2.0 by Busy and Hood.
 The ordinary upstream ZX build keeps Spectranet. This port provides a
-separate **128K game alpha 2 (fast UART bank)**, **48K game alpha 1**,
+separate **128K game alpha 3 (fast frame and UART bank)**, **48K game alpha 1**,
 and the standalone TCP alpha 3 test.
 
 ## Download without installing a compiler
@@ -225,3 +225,34 @@ binary TCP with fragmented old/new headers, early/final close, TX-backpressure,
 errors/timeouts, and a two-instance relay match of 90 steps pass. Hashes at
 16/32/48/64/80 agree with no aborts; observed game stack headroom about
 493–506 bytes. Real ESP/game speed still awaits user testing of alpha 2.
+
+
+## 128K alpha 3: reduce network and drawing overhead
+
+Load `bombernet_esp01_128_alpha3.tap` on both peers with 128K paging unlocked.
+Wi-Fi association and UART baud requirements are unchanged. The TAP is 43,146
+bytes. Game allocation ends at 64781, leaving 754 bytes below the initial
+stack; the exercised network match leaves at least 420 bytes of stack headroom.
+The 48K build is unchanged.
+
+This version retains the 60 ms simulation step, movement rules and protocol
+BUILD_ID. During the existing frame wait it advances network reception. The
+banked UART pump reads at most 128 bytes and tolerates four consecutive empty
+status probes, avoiding repeated bank calls for short UART gaps. It does not
+require hardware flow control.
+
+The main frame compositor copies the 960 playfield cells with unrolled LDI,
+then overlays the 40 HUD cells. This is valid after the preceding screen flush
+has cleared the drawing buffer. Other callers keep the general compositor.
+An emulator comparison checks all 1000 output cells against the compiled
+reference with randomized layers and HUD contents.
+
+In the same emulated relay profile, compositor CPU time falls from about
+11.9 to 5.24 ms, and network input processing from about 75 to 35 ms. The
+interval from composition to the following frame synchronization falls from
+100.5 to 57.7 ms; this excludes the screen flush and is not a hardware frame
+rate measurement. The deterministic network match retains matching hashes.
+
+The hardware target is to reduce alpha 2's measured 11-second screen crossing
+closer to the local game's under-five-second crossing. Measure the same route
+with alpha 3: a twofold gameplay speedup is a target, not yet a hardware result.
