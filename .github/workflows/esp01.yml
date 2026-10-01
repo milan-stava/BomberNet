@@ -26,8 +26,14 @@ jobs:
       - name: Compile standalone TCP test with z88dk
         run: |
           docker run --rm --entrypoint /bin/sh -v "$PWD:/src" -w /src/ports/esp01 z88dk/z88dk:latest -c 'zcc +zx -lndos -create-app -zorg=24000 -pragma-define:REGISTER_SP=65535 -I. -o esp01_tcp_test test_tcp.c tcp_esp_at.c esp_uart_bios.c'
+      - name: Measure complete game memory
+        run: |
+          docker run --rm --entrypoint /bin/sh -v "$PWD:/src" -w /src z88dk/z88dk:latest ports/esp01/build_game.sh
       - uses: actions/upload-artifact@v4
         with:
           name: esp01-tcp-test
-          path: ports/esp01/esp01_tcp_test.tap
+          path: |
+            ports/esp01/esp01_tcp_test.tap
+            build/esp01/*
+            build/spectranet/*.map
           if-no-files-found: error
