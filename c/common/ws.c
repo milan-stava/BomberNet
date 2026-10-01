@@ -107,7 +107,12 @@ const char *ws_poll(void) {
       }
       c = rx[rx_pos++];
       switch (f_state) {
-      case 0: f_op = c & 0x0f; f_state = 1; break;
+      case 0:
+#ifdef ESP_STREAM
+        /* Transparent ESP status text/EOF is not a valid relay frame. */
+        if ((c & 0xf0) != 0x80) { ws_lost=1; ws_close(); return 0; }
+#endif
+        f_op = c & 0x0f; f_state = 1; break;
       case 1:
         c &= 0x7f;                         /* server frames are not masked */
         if (c == 127) { ws_lost = 1; ws_close(); return 0; }   /* 64-bit length: never from the relay */

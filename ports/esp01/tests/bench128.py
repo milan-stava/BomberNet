@@ -6,7 +6,7 @@ import json
 from test_bank128 import BankZX,D
 results=[]
 for size in [1,32,64,128,256,600]:
-    z=BankZX();z.poke(0xc100,b'host\0')
+    z=BankZX();z.uart.payload=b'';z.poke(0xc100,b'host\0')
     assert z.call('_tcp_open',0xc100,65535)==0
     payload=(bytes(range(256))*3)[:size];z.poke(0xc100,payload)
     start=z.now();assert z.call('_tcp_send',0xc100,size)==0;ticks=z.now()-start

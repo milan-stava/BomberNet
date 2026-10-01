@@ -36,6 +36,9 @@ void net_lockstep_poll(void) {
   uint16_t avail;
   uint8_t keys[NET_SLOTS * NET_BYTES], local[NET_BYTES], i, tries = 0;
   net_status_t st;
+#ifdef ESP_STREAM
+  uint16_t tick_start=*(volatile uint16_t *)0x5c78;
+#endif
   if (net_abort) { for (i = 0; i < MAX_PLAYERS; i++) players[i].keys = 0; return; }
   for (i = 0; i < NET_BYTES; i++) local[i] = i < menu_local ? input_read(menu_inputs[i]) : 0;
   if (net_send(net_frame + net_delay, local) != 0) net_fail();
@@ -45,6 +48,9 @@ void net_lockstep_poll(void) {
     if (++tries > 4) {
       net_waiting = 1;
       if ((tries & 15) == 0) {
+#ifdef ESP_STREAM
+        if ((uint16_t)(*(volatile uint16_t *)0x5c78-tick_start)>=500) { net_abort=9; break; }
+#endif
         if (net_status(&st) == 0 &&
             (st.state == NETST_DESYNC || st.state == NETST_DROPPED || st.state == NETST_NOLINK))
           net_abort = st.state ? st.state : 9;
@@ -63,3 +69,4 @@ void net_match_end(void) {
   net_active = 0;
   net_leave();
 }
+

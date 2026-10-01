@@ -40,7 +40,7 @@ basic=(line(10,b'\xfd '+number(32767))+
 tape=(header(0,'Bomber128',basic,10,len(basic))+block(255,basic)+
       header(3,'ESP loader',loader,32768,0x8000)+block(255,loader)+
       block(255,bank)+block(255,game))
-(D/'bombernet_esp01_128_alpha5.tap').write_bytes(tape)
+(D/'bombernet_esp01_128_alpha6.tap').write_bytes(tape)
 # Re-read every TAP block and its XOR checksum, including the raw data blocks.
 p=0; blocks=[]
 while p<len(tape):

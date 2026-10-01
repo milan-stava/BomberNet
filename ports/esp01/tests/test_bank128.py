@@ -12,6 +12,7 @@ from zx._device import Dispatcher
 from zx._beeper import Beeper
 D=Path('build/esp01-128')
 S=lambda n:sym_from_map(D/'bomber.map',n)
+STREAM='_stream_active' in (D/'esp_bank.map').read_text()
 
 class UART:
     def __init__(self, real=False):
@@ -19,12 +20,14 @@ class UART:
         self.sent=bytearray(); self.pos=0; self.payload=bytes(range(256))*2+bytes(range(88))
         self.reads=0; self.real=real; self.sock=None; self.remote=bytearray(); self.reported=False
         self.peer_closed=False; self.commands=[]
+        self.raw=False;self.raw_delivered=False;self.escape=bytearray();self.last_tx=-100000000;self.now=lambda:0;self.escape_at=0
     def text(self,s): self.wire.extend(s.encode())
     def poll(self):
         if not self.sock: return
         try:
             data=self.sock.recv(4096)
             if data:
+                if self.raw:self.wire.extend(data);return
                 self.remote.extend(data)
                 if not self.reported:
                     self.text('\r\n+IPD,%d\r\n'%len(self.remote));self.reported=True
@@ -42,7 +45,23 @@ class UART:
         if port==0x713b: return 1
         return None
     def output(self,port,byte):
+        if port==0x7d3b and byte==1 and self.escape and self.now()-self.escape_at>70000:
+            self.raw=False;self.escape.clear()
         if port!=0x133b: return
+        if self.raw:
+            if byte==43 and (self.escape or self.now()-self.last_tx>70000):
+                self.escape.append(byte)
+                if len(self.escape)==3:self.escape_at=self.now()
+                return
+            if self.escape:
+                self.sent.extend(self.escape)
+                if self.real:self.sock.sendall(self.escape)
+                self.escape.clear()
+            self.last_tx=self.now();self.sent.append(byte)
+            if self.real:self.sock.sendall(bytes([byte]));self.sent.clear()
+            elif not self.raw_delivered:
+                self.wire.extend(self.payload);self.pos=len(self.payload);self.raw_delivered=True
+            return
         if self.left:
             self.sent.append(byte);self.left-=1
             if not self.left:
@@ -53,7 +72,9 @@ class UART:
         self.cmd.append(byte)
         if byte!=10:return
         cmd=self.cmd.decode();self.cmd.clear();self.commands.append(cmd.strip())
-        if cmd.startswith('AT+CIPSEND='):
+        if cmd=='AT+CIPSEND\r\n':
+            self.text('\r\nOK\r\n>');self.raw=True;self.raw_delivered=False
+        elif cmd.startswith('AT+CIPSEND='):
             self.left=int(cmd.split('=')[1]);self.text('\r\nOK\r\n>')
         elif cmd=='AT+CIPRECVLEN?\r\n': self.text('\r\n+CIPRECVLEN:%d,0,0,0,0\r\nOK\r\n'%self.available())
         elif cmd.startswith('AT+CIPRECVDATA='):
@@ -79,6 +100,7 @@ class UART:
 class BankZX(ZX):
     def __init__(self, real=False, uart=None):
         self.uart=uart or UART(real);self.pages=[];super().__init__()
+        self.uart.now=self.now
         rom=self.read(0,0x4000);self.write(0,rom,rom_page=1);self.model=Spectrum128
         self.devices=Dispatcher([self,self.kb,Beeper(Spectrum128)])
         self.set_on_output_callback(self.output)
@@ -119,17 +141,19 @@ def test_api(modern=False, early_closed=False):
     msg=bytes([0,1,62,13,10,255]);z.poke(0xc100,msg)
     assert z.call('_tcp_send',0xc100,len(msg))==0
     assert z.uart.sent==msg
-    if early_closed:z.uart.text('CLOSED\r\n')
+    if early_closed and not STREAM:z.uart.text('CLOSED\r\n')
     got=bytearray()
     for _ in range(10000):
         n=z.call('_tcp_recv',0xc100,17)
         if n==65535:break
         assert n<=17
         got.extend(z.read(0xc100,n))
+        if STREAM and len(got)==len(z.uart.payload):break
     else:raise AssertionError('receive did not end')
     assert got==z.uart.payload,(len(got),len(z.uart.payload))
-    assert z.call('_tcp_error')==0 and z.call('_tcp_peer_closed')==1
-    assert z.call('_tcp_read_commands')==4
+    assert z.call('_tcp_error')==0
+    if not STREAM:assert z.call('_tcp_peer_closed')==1
+    assert z.call('_tcp_read_commands')==(0 if STREAM else 4)
     assert len(z.pages)>20
     z.call('_tcp_close')
     print('PASS: real Z80 bank calls, bank-0 caller pointers/stack, binary TCP, fragmented UART, clean CLOSED')
