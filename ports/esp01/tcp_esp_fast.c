@@ -239,6 +239,7 @@ int16_t tcp_recv(uint8_t *buf,uint16_t max) __naked {
     ld (es_dest),hl
     ld (es_max),de
     call es_pump
+es_recv_check:
     ld a,(es_error)
     or a
     jp nz,es_recv_fail
@@ -311,7 +312,11 @@ es_recv_query:
     ld (es_query_seen),a
     ld hl,es_length
     call es_start
-    jr es_recv_zero
+    ; Start TX immediately and consume an already available reply without
+    ; repeated round trips through the C game/bridge polling loop.
+    call es_pump
+    call es_pump
+    jp es_recv_check
 es_recv_data:
     xor a
     ld (es_ready),a
@@ -320,7 +325,9 @@ es_recv_data:
     ld hl,(es_reads)
     inc hl
     ld (es_reads),hl
-    jr es_recv_zero
+    call es_pump
+    call es_pump
+    jp es_recv_check
 es_recv_fail:
     ld hl,65535
     ret

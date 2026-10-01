@@ -53,11 +53,13 @@ def faults():
         from pathlib import Path
         uart.wire.clear()
         addr=sym_from_map(Path('build/esp01-128/esp_bank.map'),'es_busy')
-        z.write(addr,b'\0',ram_page=6)
+        z._SpectrumState__memory[z._SpectrumState__RAM_PAGE_IMAGE_OFFSETS[6]+addr-0xc000]=0
+        addr=sym_from_map(Path('build/esp01-128/esp_bank.map'),'es_promptwait')
+        z._SpectrumState__memory[z._SpectrumState__RAM_PAGE_IMAGE_OFFSETS[6]+addr-0xc000]=0
         addr=sym_from_map(Path('build/esp01-128/esp_bank.map'),'es_ready')
-        z.write(addr,b'\0',ram_page=6)
+        z._SpectrumState__memory[z._SpectrumState__RAM_PAGE_IMAGE_OFFSETS[6]+addr-0xc000]=0
         addr=sym_from_map(Path('build/esp01-128/esp_bank.map'),'es_pending')
-        z.write(addr,b'\1',ram_page=6)
+        z._SpectrumState__memory[z._SpectrumState__RAM_PAGE_IMAGE_OFFSETS[6]+addr-0xc000]=1
         for _ in range(1000):
             if z.call('_tcp_recv',0xc100,17)==65535:break
         else:raise AssertionError(mode)
