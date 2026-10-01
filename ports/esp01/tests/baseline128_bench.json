@@ -1,0 +1,32 @@
+[
+  {
+    "send_bytes": 1,
+    "tstates": 73443,
+    "cpu_ms": 20.983714285714285
+  },
+  {
+    "send_bytes": 32,
+    "tstates": 150517,
+    "cpu_ms": 43.00485714285714
+  },
+  {
+    "send_bytes": 64,
+    "tstates": 225192,
+    "cpu_ms": 64.34057142857142
+  },
+  {
+    "send_bytes": 128,
+    "tstates": 380908,
+    "cpu_ms": 108.83085714285714
+  },
+  {
+    "send_bytes": 256,
+    "tstates": 683846,
+    "cpu_ms": 195.38457142857143
+  },
+  {
+    "send_bytes": 600,
+    "tstates": 1697234,
+    "cpu_ms": 484.924
+  }
+]

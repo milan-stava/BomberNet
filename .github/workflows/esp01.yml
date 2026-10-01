@@ -62,7 +62,8 @@ jobs:
           "$RUNNER_TEMP/esp-emu/bin/python" ports/esp01/tests/test_compact48.py
           "$RUNNER_TEMP/esp-emu/bin/python" ports/esp01/tests/test_relay48.py
           "$RUNNER_TEMP/esp-emu/bin/python" ports/esp01/tests/test_bank128.py
-          "$RUNNER_TEMP/esp-emu/bin/python" ports/esp01/tests/test_relay128.py
+          "$RUNNER_TEMP/esp-emu/bin/python" ports/esp01/tests/bench128.py
+          ESP_MATCH=ports/esp01/tests/profile128.py "$RUNNER_TEMP/esp-emu/bin/python" ports/esp01/tests/test_relay128.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

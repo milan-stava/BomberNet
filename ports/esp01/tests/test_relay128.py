@@ -26,7 +26,7 @@ def main():
         assert z.read8(slot)==0
         assert z.call('_tcp_error')==0
         z.call('_net_leave')
-        subprocess.run([sys.executable,'ports/esp01/tests/match128.py','60'],check=True,timeout=180)
+        subprocess.run([sys.executable,os.environ.get('ESP_MATCH','ports/esp01/tests/match128.py'),'60'],check=True,timeout=180)
         print('PASS: real game WebSocket handshake, relay room creation %s, bank-0 pointers and leave'%room)
     finally:
         server.terminate()

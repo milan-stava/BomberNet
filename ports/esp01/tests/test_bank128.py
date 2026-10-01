@@ -76,8 +76,8 @@ class UART:
         else:self.text('\r\nOK\r\n')
 
 class BankZX(ZX):
-    def __init__(self, real=False):
-        self.uart=UART(real);self.pages=[];super().__init__()
+    def __init__(self, real=False, uart=None):
+        self.uart=uart or UART(real);self.pages=[];super().__init__()
         rom=self.read(0,0x4000);self.write(0,rom,rom_page=1);self.model=Spectrum128
         self.devices=Dispatcher([self,self.kb,Beeper(Spectrum128)])
         self.set_on_output_callback(self.output)
@@ -106,13 +106,19 @@ class BankZX(ZX):
         assert self.read8(0x5b5c)==16 and self.pages[-1]==16,(name,'page')
         return self.hl
 
-def test_api():
-    z=BankZX();assert z.call('_tcp_present')==1
+def test_api(modern=False, early_closed=False):
+    uart=UART()
+    if modern:
+        original=uart.text
+        import re
+        uart.text=lambda text:original(re.sub(r"\+CIPRECVDATA,(\d+):",r"+CIPRECVDATA:\1,",text))
+    z=BankZX(uart=uart);assert z.call('_tcp_present')==1
     z.poke(0xc100,b'api.mzpico.com\0')
     assert z.call('_tcp_open',0xc100,80)==0
     msg=bytes([0,1,62,13,10,255]);z.poke(0xc100,msg)
     assert z.call('_tcp_send',0xc100,len(msg))==0
     assert z.uart.sent==msg
+    if early_closed:z.uart.text('CLOSED\r\n')
     got=bytearray()
     for _ in range(10000):
         n=z.call('_tcp_recv',0xc100,17)
@@ -122,7 +128,7 @@ def test_api():
     else:raise AssertionError('receive did not end')
     assert got==z.uart.payload,(len(got),len(z.uart.payload))
     assert z.call('_tcp_error')==0 and z.call('_tcp_peer_closed')==1
-    assert z.call('_tcp_read_commands')==2
+    assert z.call('_tcp_read_commands')==4
     assert len(z.pages)>20
     z.call('_tcp_close')
     print('PASS: real Z80 bank calls, bank-0 caller pointers/stack, binary TCP, fragmented UART, clean CLOSED')
@@ -158,4 +164,4 @@ def test_boot():
     return z
 
 if __name__=='__main__':
-    test_api();test_loader();test_boot()
+    test_api();test_api(modern=True,early_closed=True);test_loader();test_boot()
