@@ -464,7 +464,7 @@ es_consume:
     ld (es_remain),a
     ld a,(es_rxlen)
     cp 64
-    jr nc,es_bad
+    jp nc,es_bad
     ld e,a
     ld d,0
     inc a
@@ -530,13 +530,13 @@ es_delimiter:
     ld (hl),0
     ld hl,es_line+13
     call es_parse
-    jr c,es_bad
+    jp c,es_bad
     ld a,d
     or a
-    jr nz,es_bad
+    jp nz,es_bad
     ld a,e
     cp 65
-    jr nc,es_bad
+    jp nc,es_bad
     ld (es_remain),a
     or a
     ld a,0
@@ -619,7 +619,7 @@ es_not_ipd:
     call es_equal
     jr nz,es_check_error
     call es_parse
-    jr c,es_bad
+    jp c,es_bad
     ld a,d
     or e
     ld a,0
