@@ -7,7 +7,7 @@ static uint8_t wire[8192], sent[4096], payload[600];
 static unsigned wh,wt, send_left, sent_n, payload_pos, calls, ticks;
 static char cmd[256];
 static unsigned cp;
-static int no_response, modern, fifo_error, early_close;
+static int no_response, modern, fifo_error, early_close, close_at_end, query_error, query_missing;
 static void enqueue(const void *s,unsigned n) {assert(wh+n<sizeof(wire)); memcpy(wire+wh,s,n);wh+=n;}
 static void text(const char *s) {enqueue(s,(unsigned)strlen(s));}
 void esp_uart_init(void) {}
@@ -33,15 +33,19 @@ uint8_t esp_uart_write(uint8_t b) {
     if(sscanf(cmd,"AT+CIPSEND=%u",&n)==1) {
       send_left=n;text("\r\nOK\r\n>");
     } else if(!strcmp(cmd,"AT+CIPRECVLEN?\r\n")) {
-      snprintf(header,sizeof(header),"\r\n+CIPRECVLEN:%u,0,0,0,0\r\nOK\r\n",(unsigned)sizeof(payload)-payload_pos);
+      if(query_missing) {text("\r\nOK\r\n");return 1;}
+      if(query_error) {text("\r\nERROR\r\n");return 1;}
+      snprintf(header,sizeof(header),modern?"\r\n+CIPRECVLEN:%u\r\nOK\r\n":"\r\n+CIPRECVLEN:%u,0,0,0,0\r\nOK\r\n",(unsigned)sizeof(payload)-payload_pos);
       text(header);
     } else if(sscanf(cmd,"AT+CIPRECVDATA=%u",&n)==1) {
       unsigned rest=sizeof(payload)-payload_pos;
+      /* A speculative read after drain would fail on the tested firmware. */
+      assert(rest && n);
       if(n>rest)n=rest;
       snprintf(header,sizeof(header),modern?"\r\n+CIPRECVDATA:%u,":"\r\n+CIPRECVDATA,%u:",n);
       text(header);enqueue(payload+payload_pos,n);payload_pos+=n;
       text("\r\nOK\r\n");
-      if(early_close && payload_pos==512) text("\r\nCLOSED\r\n");
+      if((early_close && payload_pos==512) || (close_at_end && payload_pos==sizeof(payload))) text("\r\nCLOSED\r\n");
     } else if(strstr(cmd,"CIPSTART")) text("\r\nCONNECT\r\nOK\r\n");
     else text("\r\nOK\r\n");
   }
@@ -61,10 +65,11 @@ static void roundtrip(int format) {
   }
   assert(total==sizeof(output) && !memcmp(output,payload,sizeof(output)));
   /* Read to a zero-length reply; then a peer close must be reported. */
-  if(!early_close) for(loops=0;loops<1000;loops++) assert(tcp_recv(output,17)>=0);
+  if(!early_close && !close_at_end) for(loops=0;loops<1000;loops++) assert(tcp_recv(output,17)>=0);
   text("\r\nCLOSED\r\n");
   for(loops=0;loops<1000;loops++) if(tcp_recv(output,17)<0)break;
   assert(loops<1000);
+  assert(tcp_error()==0);
   tcp_close();
 }
 int main(void) {
@@ -76,10 +81,20 @@ int main(void) {
   assert(tcp_open("bad\"host",80)==3);
   roundtrip(0);roundtrip(1);
   early_close=1;roundtrip(0);roundtrip(1);early_close=0;
+  close_at_end=1;roundtrip(0);roundtrip(1);close_at_end=0;
   assert(tcp_open("api.mzpico.com",80)==0);
-  fifo_error=1;assert(tcp_recv(&b,1)==-1);fifo_error=0;tcp_close();
-  no_response=1;assert(tcp_open("api.mzpico.com",80)!=0);
+  query_error=1;
+  text("\r\n+IPD,1\r\n");
+  for(i=0;i<1000;i++) if(tcp_recv(&b,1)<0) break;
+  assert(i<1000 && tcp_error()==1);query_error=0;tcp_close();
+  assert(tcp_open("api.mzpico.com",80)==0);
+  fifo_error=1;assert(tcp_recv(&b,1)==-1 && tcp_error()==5);fifo_error=0;tcp_close();
+  assert(tcp_open("api.mzpico.com",80)==0);
+  query_missing=1;text("\r\n+IPD,1\r\n");
+  for(i=0;i<1000;i++) if(tcp_recv(&b,1)<0) break;
+  assert(i<1000 && tcp_error()==4);query_missing=0;tcp_close();
+  no_response=1;assert(tcp_open("api.mzpico.com",80)!=0 && tcp_error()==2);
   puts("PASS: binary send/receive, fragmented old/new headers, 512-byte chunks,");
-  puts("small caller buffers, zero receive, CLOSED, early CLOSED with unread data, FIFO error and timeout.");
+  puts("small caller buffers, zero receive, CLOSED, early/final CLOSED, no speculative empty read, AT/FIFO error and timeout.");
   return 0;
 }

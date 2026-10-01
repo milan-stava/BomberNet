@@ -12,7 +12,7 @@ int main(void) {
   uint16_t start, i, hl=0;
   int16_t n;
   unsigned long total=0, body=0, expected=0;
-  puts("ESP01 MB/EL TCP alpha 2");
+  puts("ESP01 MB/EL TCP alpha 3");
   if(!tcp_present()) {printf("AT failed: %u\n",tcp_error()); return 1;}
   puts("AT OK");
   e=tcp_open("api.mzpico.com",80);

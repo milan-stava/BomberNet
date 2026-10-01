@@ -25,16 +25,11 @@ jobs:
         run: '"$RUNNER_TEMP/sjasmplus/sjasmplus" WifiBios20_MB_EL.a80'
       - name: Compile standalone TCP test with z88dk
         run: |
-          docker run --rm --entrypoint /bin/sh -v "$PWD:/src" -w /src/ports/esp01 z88dk/z88dk:latest -c 'zcc +zx -lndos -create-app -zorg=24000 -pragma-define:REGISTER_SP=65535 -I. -o esp01_tcp_test test_tcp.c tcp_esp_at.c esp_uart_bios.c'
-      - name: Measure complete game memory
-        run: |
-          docker run --rm --entrypoint /bin/sh -v "$PWD:/src" -w /src z88dk/z88dk:latest ports/esp01/build_game.sh
-          python3 ports/esp01/memory_report.py build/spectranet/bomber.map build/esp01/bomber.map
+          docker run --rm --entrypoint /bin/sh -v "$PWD:/src" -w /src/ports/esp01 z88dk/z88dk:latest -c 'zcc +zx -lndos -create-app -zorg=24000 -pragma-define:REGISTER_SP=65535 -m -I. -o esp01_tcp_test test_tcp.c tcp_esp_at.c esp_uart_bios.c'
+      - name: Check test memory including BSS
+        run: python3 ports/esp01/memory_report.py ports/esp01/esp01_tcp_test.map
       - uses: actions/upload-artifact@v4
         with:
           name: esp01-tcp-test
-          path: |
-            ports/esp01/esp01_tcp_test.tap
-            build/esp01/*
-            build/spectranet/*.map
+          path: ports/esp01/esp01_tcp_test.tap
           if-no-files-found: error

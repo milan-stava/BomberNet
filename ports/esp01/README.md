@@ -51,3 +51,22 @@ An AT error after close is reported explicitly; it is not assumed to prove
 that all data was received. Hardware verification is still required.
 Mock tests cover CLOSED after the first 512 bytes with 88 bytes still buffered,
 for both supported receive-header formats.
+
+## Alpha 3: receive end test
+
+Queries `AT+CIPRECVLEN?` before each passive read. The link-0 length is
+parsed for both single-length and five-link replies. A zero length on a
+closed connection ends cleanly, without a speculative CIPRECVDATA that
+could return ERROR. Remaining bytes after CLOSED are still read; real
+query/UART/framing errors remain errors. Requires CIPRECVLEN support.
+
+Hardware alpha 2 received a complete 601-byte HTTP response with a 50-byte
+body; its third passive read returned AT error. Alpha 3 tests the corrected
+end handling. The test should print a complete HTTP response and ERROR CODE 0.
+
+This is still a standalone test. Full-game memory measurement of alpha 2
+with the current compiler ended at 69182 (0x10e3e), including BSS, beyond
+48K RAM. The Spectranet baseline ended at 64385 (0xfb81). The test backend
+must be reduced before shipping a complete game. BSS_END, not BSS_tail, is
+the total allocation boundary in the z88dk linker map. Game size work is
+postponed until this hardware test passes.
