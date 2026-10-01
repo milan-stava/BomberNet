@@ -47,6 +47,15 @@ def faults():
         assert 'AT+CIPSTART="TCP","host",65535' in uart.commands
         z.poke(0xc100,b'x');assert z.call('_tcp_send',0xc100,1)==0
         uart.mode=mode
+        # An empty/unknown notification requires the defensive length query.
+        # Known +IPD lengths now bypass it.
+        from zxemu import sym_from_map
+        from pathlib import Path
+        uart.wire.clear()
+        addr=sym_from_map(Path('build/esp01-128/esp_bank.map'),'es_ready')
+        z.write(addr,b'\0',ram_page=6)
+        addr=sym_from_map(Path('build/esp01-128/esp_bank.map'),'es_pending')
+        z.write(addr,b'\1',ram_page=6)
         for _ in range(1000):
             if z.call('_tcp_recv',0xc100,17)==65535:break
         else:raise AssertionError(mode)

@@ -13,7 +13,11 @@
 
 uint8_t ws_open_now, ws_lost;
 
+#ifdef ESP_FAST128
+static uint8_t rx[192];
+#else
 static uint8_t rx[64];                     /* bytes from the socket not yet parsed */
+#endif
 static uint8_t rx_pos, rx_len;
 static char lbuf[WS_HDR + WS_LINE_MAX];     /* received line, with room for a pong header */
 #define line (lbuf + WS_HDR)
@@ -135,3 +139,4 @@ void ws_close(void) {
   rx_pos = rx_len = 0;
   f_state = 0;
 }
+

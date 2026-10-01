@@ -6,11 +6,39 @@
 uint8_t tcp_present(void) __naked {
  __asm
     call es_init
+    ld a,(es_opened)
+    or a
+    jr nz,es_present_probe
+    call es_clear
+    call es_drain
+es_present_probe:
+    ld hl,es_at
+    call es_command
+    or a
+    jr z,es_present_ok
+    ; An unknown payload/transparent mode cannot be recovered with AT alone.
+    ; Cycle only module power, keeping baud and persistent Wi-Fi credentials.
+    ld bc,0x703b
+    ld a,5
+    out (c),a
+    inc b
+    in a,(c)
+    res 0,a
+    out (c),a
+    ld de,50
+    call es_pause
+    call es_init
+    ld de,150
+    call es_pause
+    call es_clear
+    call es_drain
     ld hl,es_at
     call es_command
     ld hl,0
     or a
     ret nz
+es_present_ok:
+    ld hl,0
     inc l
     ret
  __endasm;
@@ -26,6 +54,12 @@ uint8_t tcp_open(const char *host,uint16_t port) __naked {
     ld (es_host),hl
     ld (es_port),de
     call _tcp_close
+    ; Also close a socket left by another program or an earlier failed open.
+    call es_clear
+    call es_drain
+    ld hl,es_close
+    call es_command
+    ; ERROR means there was no socket; it is harmless here.
     ; Contiguous flags are reset together; buffers are length framed.
     ld hl,es_busy
     ld de,es_busy+1
@@ -294,25 +328,15 @@ void tcp_close(void) __naked {
  __asm
     ld a,(es_opened)
     or a
-    ret z
-    ld a,(es_error)
-    or a
-    jr nz,es_close_end
-    ld a,(es_closed)
-    or a
-    jr nz,es_close_end
+    jr z,es_close_end
+    ; Finish an outstanding passive read before issuing another command.
+    call es_wait
+    call es_clear
     ld hl,es_close
     call es_command
 es_close_end:
-    xor a
-    ld (es_opened),a
-    ld (es_busy),a
-    ld (es_promptwait),a
-    ld (es_rxlen),a
-    ld (es_rxpos),a
-    ld (es_remain),a
-    ld hl,0
-    ld (es_txptr),hl
+    call es_clear
+    call es_drain
     ret
  __endasm;
 }
@@ -350,6 +374,53 @@ es_init:
     in a,(c)
     set 0,a
     out (c),a
+    ret
+ ; Reset parser/transaction state, preserving host and port arguments.
+es_clear:
+    ld hl,es_busy
+    ld de,es_busy+1
+    ld bc,13
+    ld (hl),0
+    ldir
+    ld hl,0
+    ld (es_txptr),hl
+    ld (es_available),hl
+    ret
+; Discard old replies only when no transaction is active. Bounded 2048 bytes.
+es_drain:
+    ld de,2048
+    ld l,4
+es_drain_loop:
+    ld bc,0x133b
+    in a,(c)
+    bit 0,a
+    jr nz,es_drain_byte
+    dec l
+    ret z
+    jr es_drain_loop
+es_drain_byte:
+    ld l,4
+    inc b
+    in a,(c)
+    dec de
+    ld a,d
+    or e
+    jr nz,es_drain_loop
+    ret
+; Wait for DE ROM ticks; independent of CPU turbo, interrupts stay enabled.
+es_pause:
+    ld hl,(0x5c78)
+    push hl
+es_pause_loop:
+    pop bc
+    push bc
+    ld hl,(0x5c78)
+    or a
+    sbc hl,bc
+    or a
+    sbc hl,de
+    jr c,es_pause_loop
+    pop bc
     ret
 ; Read byte -> A, carry when no byte or FIFO full (error 5).
 es_read:
@@ -552,12 +623,21 @@ es_delimiter:
     cp 193
     jp nc,es_bad
     ld (es_remain),a
+    ld hl,(es_available)
     or a
+    sbc hl,de
+    jr nc,es_remaining_valid
+    ld hl,0
+es_remaining_valid:
+    ld (es_available),hl
+    ld a,h
+    or l
     ld a,0
     jr z,es_data_empty
     inc a
 es_data_empty:
     ld (es_pending),a
+    ld (es_ready),a
     xor a
     ld (es_llen),a
     ret
@@ -624,8 +704,15 @@ es_not_closed:
     ld de,es_ipd
     call es_equal
     jr nz,es_not_ipd
+    call es_parse
+    ret c
+    ld (es_available),de
+    ld a,d
+    or e
+    ret z
     ld a,1
     ld (es_pending),a
+    ld (es_ready),a
     ret
 es_not_ipd:
     ld hl,es_line
@@ -634,6 +721,7 @@ es_not_ipd:
     jr nz,es_check_error
     call es_parse
     jp c,es_bad
+    ld (es_available),de
     ld a,d
     or e
     ld a,0
@@ -819,6 +907,7 @@ es_max: defs 2
 es_txptr: defs 2
 es_tick: defs 2
 es_reads: defs 2
+es_available: defs 2
 es_busy: defs 1
 es_error: defs 1
 es_closed: defs 1

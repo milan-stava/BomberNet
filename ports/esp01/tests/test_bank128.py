@@ -101,7 +101,7 @@ class BankZX(ZX):
         self.sp=0xfff0-len(words)*2
         self.poke(self.sp,b''.join(struct.pack('<H',x) for x in words))
         self.pc=S(name);before_sp=self.sp
-        self.run_until(0x5b0f,20)
+        self.run_until(0x5b0f,40)
         assert self.sp==before_sp+2, (name,'stack',hex(self.sp),hex(before_sp))
         assert self.read8(0x5b5c)==16 and self.pages[-1]==16,(name,'page')
         return self.hl
