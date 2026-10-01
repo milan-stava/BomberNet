@@ -72,9 +72,11 @@ eb_page: defb 0
 static uint8_t initialized(uint8_t mark) __z88dk_fastcall __naked {
   __asm
     ld a,(eb_init)
+    ld e,a
+    ld a,l
+    ld (eb_init),a
+    ld l,e
     ld h,0
-    ld (eb_init),l
-    ld l,a
     ret
 eb_init: defb 0
     PUBLIC _esp_stage
