@@ -87,6 +87,23 @@ def test_faults():
         else:raise AssertionError(mode)
         assert z.call('_tcp_error')==error,(mode,z.call('_tcp_error'))
     print('PASS: compact UART full, bounded timeout, AT error, missing receive length')
+def test_layout():
+    assert S('__head')==24000 and S('__BSS_END_tail')<=65535-512
+    assert S('_zx_gcache')==23744 and S('_zx_gcache')+256==24000
+    for name,size in [('es_cmd',128),('es_line',48),('es_rx',64),('es_reads',2)]:
+        assert 23296<=S(name) and S(name)+size<=23552
+    tape=Path(str(B)+'.tap').read_bytes();pos=0;blocks=[]
+    while pos<len(tape):
+        n=struct.unpack_from('<H',tape,pos)[0];pos+=2
+        data=tape[pos:pos+n];pos+=n;check=0
+        for byte in data:check^=byte
+        assert len(data)==n and check==0
+        blocks.append(data)
+    assert pos==len(tape) and len(blocks)==4
+    assert struct.unpack_from('<H',blocks[2],14)[0]==24000
+    assert blocks[3][1:-1]==B.read_bytes()
+    print('PASS: 48K fixed scratch, 512-byte stack reserve, TAP CODE and checksums')
 if __name__=='__main__':
+    test_layout()
     test_api();test_api(modern=True,early_closed=True);test_faults();test_boot()
 

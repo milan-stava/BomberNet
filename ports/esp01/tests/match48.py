@@ -98,6 +98,7 @@ a.screenshot('build/esp01/net_A.png'); b.screenshot('build/esp01/net_B.png')
 for name, z in (('A', a), ('B', b)):
     m = z.read(BSS_END, 0xff00 - BSS_END)
     used_from = next((BSS_END + i for i, v in enumerate(m) if v != 0xa5), 0xff00)
+    assert used_from - BSS_END >= 128, (name, 'stack reserve', used_from - BSS_END)
     print(f'{name}: stack reached {used_from:04x}, {used_from - BSS_END} bytes above the program left unused')
 sys.exit(1 if mism or any(aborts) or not common else 0)
 

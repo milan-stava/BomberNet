@@ -1,7 +1,7 @@
 """Compiled game's WebSocket handshake/create/close through UART + local relay."""
 import os, socket, subprocess, sys, time
 from pathlib import Path
-from test_compact48 import CompactZX as BankZX, D, S
+from test_compact48 import CompactZX as BankZX, D, S, B
 
 def main():
     log=open(D/'relay-test.log','w')
@@ -19,7 +19,7 @@ def main():
         settings=S('_outbuf');code=S('_net_code');slot=S('_net_slot')
         z.poke(settings,b'\x01\x02')
         # Use the documented build id in this exact build.
-        build=S('BUILD_ID') if 'BUILD_ID' in (D/'bomber.map').read_text() else 0x0604
+        build=S('BUILD_ID') if 'BUILD_ID' in Path(str(B)+'.map').read_text() else 0x0604
         result=z.call('_net_create',build,2,settings,2,code,slot)
         assert result==0, ('create',result,z.uart.commands[-8:])
         room=z.read(code,4).decode();assert len(room)==4 and room.isalpha()

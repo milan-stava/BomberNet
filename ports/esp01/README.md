@@ -130,7 +130,7 @@ requires a separate audit of ROM/peripheral use.
   Stack watermark leaves roughly 395-403 bytes between game BSS and the
   deepest observed stack use. This is a tested scenario, not a proof of
   every stack path or real UART/game timing.
-- The complete 128K game has not yet been tested on the user's hardware.
+- The user confirmed that the 128K alpha starts successfully on real hardware.
 
 ### Rebuild
 
@@ -140,3 +140,41 @@ BASIC/loader/two images, and runs the emulator/relay tests. Local equivalents
 are `build_game128.sh`, `bank_layout.py`, `link_game128.sh`, `pack_game128.py`
 and `loader128.a80`. Use the same z88dk container and sjasmplus 1.20.3 as the
 workflow; run the Python steps on the host outside the compiler container.
+
+
+## BomberNet ESP-01 48K game alpha 1
+
+`bombernet_esp01_48_alpha1.tap` is an unbanked game, built with the compact
+Z80 ESP-AT backend. Select **48K mode / 48K BASIC** before loading it from
+the beginning. Keep ESP baud and Wi-Fi setup as used for the 128K version.
+The compact version uses the documented UART ports directly, with just the
+required BIOS power-enable operation. It retains passive receive, checks
+receive lengths before fetching, and reads at most 64 payload bytes per command.
+No baud changes, RX clears during a connection, or hardware flow control.
+
+The main image occupies 24000 (5DC0h) through 65016 (FDF8h), including BSS.
+Allocation end 65017 leaves **518 bytes** below SP=65535. Fixed scratch also
+uses 254 bytes of the printer buffer (5B00h..5BFDh) and the renderer's 256-byte
+cache at 23744 (5CC0h)..23999 (5DBFh), after the ROM system variables and
+before the game. The first flush clears the relocated cache. HOST/JOIN share
+one synchronous path buffer. Game rules, player counts, relay protocol and
+BUILD_ID are unchanged. The fixed areas overwrite BASIC workspace after
+startup, so reset to return to BASIC. The 128K build keeps its own RAM layout.
+
+**Do not launch this TAP while the 128K ROM paging services are active:**
+its printer scratch overwrites their routines and BANKM. Use the 128K TAP
+for that configuration instead.
+
+Validation of the compiled 48K image:
+- Binary stream with split UART responses, both receive-header formats,
+  early CLOSED with data still pending, and clean final close.
+- FIFO-full detection, 10-second timeout, AT error and missing receive length.
+- TAP block checksums and CODE image, fixed-area bounds and 512-byte stack guard.
+- Real upstream local relay: WebSocket upgrade, HOST/JOIN, ready and a two-player
+  60-step network match. Hashes at frames 16/32/48 agree; no aborts. Stack
+  watermark leaves 191/198 bytes above the allocated image in this test.
+
+The 48K TAP awaits hardware testing. The 518-byte total stack allowance is
+small; the observed watermark covers the tested two-player scenario, not every
+possible game state. Start with NETWORK -> HOST, two players / one local,
+then JOIN from a second instance as with the 128K version.
