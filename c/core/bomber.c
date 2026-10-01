@@ -522,8 +522,15 @@ static void lobby_messages(lobby_t *L) {
   uint8_t from, m[32], len, i;
   while ((len = net_msg_recv(&from, m)) != 0) {
     if (L->host) {
-      if (m[0] == LM_PONG && len >= 2 && m[1] == L->seq && from != 0)
+      if (m[0] == LM_PONG && len >= 2 && m[1] == L->seq && from != 0) {
+#ifdef ESP_FAST128
+        uint8_t rtt=(uint8_t)(L->n-L->sent_at);
+        L->got_delay=0; /* host: no longer awaiting this ping */
+        lobby_apply_rtt(L->samples,rtt?rtt:1);
+#else
         lobby_apply_rtt(L->samples, (uint8_t)(L->n - L->sent_at));
+#endif
+      }
       else if (m[0] == LM_HELLO && len >= 2 && from > 0 && from < NET_SLOTS) {
         L->counts[from] = m[1] > 3 ? 3 : m[1];
         L->seen[from] = L->n;
@@ -585,9 +592,17 @@ static uint8_t net_lobby(void) {
     if ((L.n & 7) == 0) net_status(&st);
     lobby_messages(&L);
     if (L.host) {
-      if (st.members > 1 && (L.n % 10) == 0) {          /* ping the joiners */
+#ifdef ESP_FAST128
+      if (L.got_delay && (uint8_t)(L.n-L.sent_at)>=50) L.got_delay=0;
+      if (!L.got_delay && st.members > 1 && (L.n % 10) == 0) {
+#else
+      if (st.members > 1 && (L.n % 10) == 0) {
+#endif          /* ping the joiners */
         uint8_t m[2]; m[0] = LM_PING; m[1] = ++L.seq; L.sent_at = (uint8_t)L.n;
         net_msg_send(0xff, m, 2);
+#ifdef ESP_FAST128
+        L.got_delay=1;
+#endif
       }
       for (i = 1; i < NET_SLOTS; i++)                    /* forget joiners that left */
         if (L.counts[i] && (uint16_t)(L.n - L.seen[i]) > HELLO_TTL) L.counts[i] = 0;
