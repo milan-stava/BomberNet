@@ -30,6 +30,7 @@ jobs:
         run: python3 ports/esp01/memory_report.py ports/esp01/esp01_tcp_test.map
       - name: Build compact 48K game
         run: |
+          mkdir -p build/esp01 build/esp01-128
           docker run --rm --entrypoint /bin/sh -v "$PWD:/src" -w /src z88dk/z88dk:latest ports/esp01/build_game.sh
           python3 ports/esp01/memory_report.py build/esp01/bombernet_esp01_48_alpha1.map
       - uses: actions/upload-artifact@v4
