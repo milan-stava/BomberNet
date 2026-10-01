@@ -39,3 +39,15 @@ Host tests cover binary data, fragmented old/new CIPRECVDATA headers,
 512-byte chunks, small caller buffers, empty reads, CLOSED, FIFO error and
 timeout. Z80 build and actual hardware testing are tracked through Actions
 and user testing. Do not treat this source-only initial port as a game release.
+
+## Alpha 2
+
+Continues draining passive receive data after CLOSED while data is pending.
+The HTTP test prints status, total/body byte counts, Content-Length validation,
+read-command count and a distinct end/error reason instead of long headers.
+Error codes: 0 none, 1 ESP AT ERROR/FAIL/busy, 2 command timeout,
+4 invalid receive framing or software ring full, 5 UART BIOS receive error.
+An AT error after close is reported explicitly; it is not assumed to prove
+that all data was received. Hardware verification is still required.
+Mock tests cover CLOSED after the first 512 bytes with 88 bytes still buffered,
+for both supported receive-header formats.

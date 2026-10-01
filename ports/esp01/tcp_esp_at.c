@@ -16,12 +16,14 @@ static uint8_t rx[RX_SIZE];
 static uint16_t head, tail, remain, deadline;
 static uint8_t line[96], llen, failed, closed, opened, pending;
 static uint8_t busy, result, prompt, discard, ready, awaiting_prompt;
+static uint8_t error_code;
+static uint16_t read_commands;
 static uint8_t tx[128];
 static uint16_t txlen, txpos;
 
 static uint16_t used(void) { return (uint16_t)(head-tail); }
 static uint8_t expired(void) { return (uint16_t)(esp_ticks()-deadline)>=500; }
-static void fault(void) { failed=1; busy=0; txlen=txpos=0; }
+static void fault(void) { if (!error_code) error_code=4; failed=1; busy=0; txlen=txpos=0; }
 static void start(const char *cmd) {
   uint16_t n=(uint16_t)strlen(cmd);
   memcpy(tx,cmd,n); txlen=n; txpos=0;
@@ -33,7 +35,7 @@ static void finish_line(void) {
     if (busy && !awaiting_prompt) {result=1; busy=0;}
   } else if (!strcmp((char*)line,"ERROR") || !strcmp((char*)line,"FAIL") ||
              !strcmp((char*)line,"SEND FAIL") || !strncmp((char*)line,"busy",4)) {
-    result=2; busy=0;
+    result=2; busy=0; error_code=1;
   } else if (!strcmp((char*)line,"CLOSED") || !strcmp((char*)line,"WIFI DISCONNECT")) {
     closed=1;
   } else if (!strncmp((char*)line,"+IPD,",5)) {
@@ -74,7 +76,7 @@ static void pump(void) {
   int8_t r;
   while (budget--) {
     r=esp_uart_read(&b);
-    if (r<0) {fault(); return;}
+    if (r<0) {error_code=5; fault(); return;}
     if (!r) break;
     consume(b);
     if (failed) return;
@@ -85,11 +87,11 @@ static void pump(void) {
     if (!esp_uart_write(tx[txpos])) break;
     txpos++;
   }
-  if (busy && expired()) fault();
+  if (busy && expired()) {error_code=2; fault();}
 }
 static uint8_t wait_idle(void) {
   while (busy && !failed) pump();
-  return failed ? E_TIMEOUT : result==2 ? E_IO : 0;
+  return failed ? (error_code==2 ? E_TIMEOUT : E_IO) : result==2 ? E_IO : 0;
 }
 static uint8_t command(const char *cmd) {
   uint8_t e=wait_idle();
@@ -118,7 +120,7 @@ uint8_t tcp_open(const char *host,uint16_t port) {
   if (!tcp_present()) return E_IO;
   tcp_close();
   failed=busy=closed=pending=discard=llen=result=awaiting_prompt=0;
-  remain=head=tail=0; txlen=txpos=0;
+  remain=head=tail=0; txlen=txpos=0; error_code=0; read_commands=0;
   if ((e=command("ATE0\r\n"))!=0) return e;
   /* Wi-Fi credentials are deliberately retained from existing ESP setup. */
   if ((e=command("AT+CIPMUX=0\r\n"))!=0) return e;
@@ -159,12 +161,12 @@ int16_t tcp_recv(uint8_t *buf,uint16_t max) {
   if (failed) return -1;
   while(n<max && used()) buf[n++]=rx[tail++ & RX_MASK];
   if (n) return (int16_t)n;
-  if (!opened || (closed && !busy && !remain)) return -1;
+  if (!opened || (closed && !busy && !remain && !pending)) return -1;
   if (!busy && result==2) {fault(); return -1;}
   if (max && !busy && pending) {
     count=RX_SIZE-used(); if(count>CHUNK) count=CHUNK;
     strcpy(cmd,"AT+CIPRECVDATA="); p=put_u(cmd+15,count); strcpy(p,"\r\n");
-    pending=0; start(cmd); pump();
+    pending=0; start(cmd); ++read_commands; pump();
   }
   return 0;
 }
@@ -172,3 +174,7 @@ void tcp_close(void) {
   if (opened && !failed) (void)command("AT+CIPCLOSE\r\n");
   opened=0; closed=1; head=tail=remain=0;
 }
+
+uint8_t tcp_error(void) {return error_code;}
+uint8_t tcp_peer_closed(void) {return closed;}
+uint16_t tcp_read_commands(void) {return read_commands;}
