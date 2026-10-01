@@ -113,7 +113,16 @@ def async_send():
     z.poke(0xc100,b'x');assert z.call('_tcp_send',0xc100,1)==0
     uart.release();z.call('_tcp_close')
     assert z.call('_tcp_error')==0
-    print('PASS: game computes with SEND OK pending; next send/close serialize completion')
+    uart=DelayedAckUART();z=BankZX(uart=uart)
+    z.poke(0xc100,b'host\0');assert z.call('_tcp_open',0xc100,80)==0
+    z.poke(0xc100,b'x');assert z.call('_tcp_send',0xc100,1)==0
+    uart.ack_pending='\r\nSEND FAIL\r\n';uart.release()
+    for _ in range(20):
+        if z.call('_tcp_recv',0xc100,17)==65535:break
+    else:raise AssertionError('late SEND FAIL was lost')
+    assert z.call('_tcp_error')==1
+    z.call('_tcp_close');assert z.call('_tcp_open',0xc100,80)==0
+    print('PASS: pending SEND OK overlaps game, serialized sends/close, late SEND FAIL recovery')
 
 if __name__=='__main__':async_send()
 
