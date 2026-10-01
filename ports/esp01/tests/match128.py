@@ -25,6 +25,21 @@ MN, MM, MP, ML, NC, NA, NAB, NS, NT, NTOT, NDLY = (S(n) for n in ('_menu_net', '
 def inst(name):
     z = BankZX(real=True)
     z.pc = 24000
+    if os.environ.get('ESP_WALK')=='1':
+        assert PLAYERS==2
+        stage_reset=S('_players_stage_reset');z.set_breakpoint(stage_reset)
+        prior=z.on_breakpoint
+        def walk_start():
+            prior()
+            if z.pc==stage_reset and z.read8(NA):
+                arena=bytearray([32]*1000)
+                for y in range(24):
+                    for x in range(40):
+                        if y in (0,23) or x in (0,39):arena[y*40+x]=0x88
+                z.poke(S('_map_layer'),arena)
+                z.poke(S('_players')+3,bytes([1,1]))
+                z.poke(S('_players')+16+3,bytes([37,20]))
+        z.on_breakpoint=walk_start
     return z
 
 
@@ -62,16 +77,7 @@ for _ in range(200):
     frames(1, a, b)
 print('in game: title_mode', a.read8(TM), b.read8(TM), 'net_active', a.read8(NA), b.read8(NA),
       '| seats', a.read8(NTOT), a.read(NT, 4).hex(), '| delay', a.read8(NDLY), b.read8(NDLY), flush=True)
-if os.environ.get('ESP_WALK')=='1':
-    assert PLAYERS==2
-    arena=bytearray([32]*1000)
-    for y in range(24):
-        for x in range(40):
-            if y in (0,23) or x in (0,39):arena[y*40+x]=0x88
-    for z in (a,b):
-        z.poke(S('_map_layer'),arena);z.poke(S('_draw_buf'),arena)
-        z.poke(S('_players')+3,bytes([1,1]));z.poke(S('_players')+16+3,bytes([37,20]))
-    print('WALK: clear corridor, continuous bidirectional movement',flush=True)
+if os.environ.get('ESP_WALK')=='1':print('WALK: clear corridor, continuous bidirectional movement',flush=True)
 a.press('P'); b.press('O')                                       # both walk: inputs cross the network
 HP = 16
 seen = {'A': {}, 'B': {}}
