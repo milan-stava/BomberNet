@@ -10,8 +10,8 @@ for name in ['_tcp_present','_tcp_open','_tcp_send','_tcp_recv','_tcp_close','eb
     assert g[name]<0xc000, '%s is not in fixed RAM' % name
 assert g['_esp_stage']+256<=0xc000
 assert b['__head']==0xc000 and b['__BSS_END_tail']<=0xfdff
-assert 24000+len(game)<=g['__BSS_head']
-assert 0xc000+len(bank)<=b['__BSS_head']
+assert 24000+len(game)<=g['__BSS_END_tail']
+assert 0xc000+len(bank)<=b['__BSS_END_tail']
 if '--prepare' in sys.argv:
     (D/'loader_sizes.inc').write_text('BANK_SIZE EQU %d\nGAME_SIZE EQU %d\n'%(len(bank),len(game)))
     sys.exit(0)

@@ -44,6 +44,11 @@ jobs:
           "$RUNNER_TEMP/sjasmplus/sjasmplus" ../../ports/esp01/loader128.a80
           cd ../..
           python3 ports/esp01/pack_game128.py
+      - name: Execute bank and game tests in Spectrum 128 emulator
+        run: |
+          python3 -m venv "$RUNNER_TEMP/esp-emu"
+          "$RUNNER_TEMP/esp-emu/bin/pip" install zx==0.13.15
+          "$RUNNER_TEMP/esp-emu/bin/python" ports/esp01/tests/test_bank128.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
