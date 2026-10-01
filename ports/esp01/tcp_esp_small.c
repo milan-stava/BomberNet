@@ -26,18 +26,12 @@ uint8_t tcp_open(const char *host,uint16_t port) __naked {
     ld (es_host),hl
     ld (es_port),de
     call _tcp_close
-    xor a
-    ld (es_error),a
-    ld (es_closed),a
-    ld (es_pending),a
-    ld (es_rxlen),a
-    ld (es_rxpos),a
-    ld (es_llen),a
-    ld (es_discard),a
-    ld (es_remain),a
-    ld (es_promptwait),a
-    ld (es_query),a
-    ld (es_ready),a
+    ; Contiguous flags are reset together; buffers are length framed.
+    ld hl,es_busy
+    ld de,es_busy+1
+    ld bc,13
+    ld (hl),0
+    ldir
     ld hl,0
     ld (es_reads),hl
     call _tcp_present
@@ -796,15 +790,15 @@ es_send_ok_text: defm "SEND OK"
 es_send_fail_text: defm "SEND FAIL"
     defb 0
     SECTION bss_compiler
-es_host: defs 2
-es_port: defs 2
-es_sendptr: defs 2
-es_sendlen: defs 2
-es_dest: defs 2
-es_max: defs 2
+    defc es_host = 23536
+    defc es_port = 23538
+    defc es_sendptr = 23540
+    defc es_sendlen = 23542
+    defc es_dest = 23544
+    defc es_max = 23546
 es_txptr: defs 2
 es_tick: defs 2
-es_reads: defs 2
+    defc es_reads = 23548
 es_busy: defs 1
 es_error: defs 1
 es_closed: defs 1

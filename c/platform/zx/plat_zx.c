@@ -64,7 +64,18 @@ zx_no_console:
 
 /* ---- ports ---- */
 uint8_t zx_bar_attr = 0x58;        /* status bar: black on the wall's colour, set in plat_init */
-uint8_t zx_gcache[256];             /* rendered-group cache of flush_screen: 32 x (generation, 4 cells, address, spare) */
+#ifdef ESP01_COMPACT48
+extern uint8_t zx_gcache[256];
+void zx_cache_address(void) __naked {
+  __asm
+    PUBLIC _zx_gcache
+    defc _zx_gcache = 23744
+  __endasm;
+}
+#else
+uint8_t zx_gcache[256];
+#endif
+/* rendered-group cache of flush_screen: 32 x (generation, 4 cells, address, spare) */
 uint8_t zx_groups;                /* groups redrawn since it was last cleared (measurements) */
 
 static uint8_t zx_in(uint16_t port) __z88dk_fastcall __naked {
@@ -765,7 +776,11 @@ fz_attr: defw 0
 fz_sp:   defw 0
 fz_blank: defb 0
 fz_crow: defb 0
+#ifdef ESP01_COMPACT48
+fz_gen:  defb 255              ; clear relocated cache on the first flush
+#else
 fz_gen:  defb 0
+#endif
 fz_ent:  defw 0
 fz_g3:   defb 0
 fz_bar:  defb 0
@@ -778,3 +793,4 @@ fz_rowtab:                  ; address of pixel line 0, byte 1 of each character 
     defw 0x5001, 0x5021, 0x5041, 0x5061, 0x5081, 0x50a1, 0x50c1, 0x50e1
   __endasm;
 }
+
