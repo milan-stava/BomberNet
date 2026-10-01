@@ -8,6 +8,8 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[3]/'tools'))
 from zxemu import ZX, sym_from_map
 from zx._data import Spectrum128
+from zx._device import Dispatcher
+from zx._beeper import Beeper
 D=Path('build/esp01-128')
 S=lambda n:sym_from_map(D/'bomber.map',n)
 
@@ -77,6 +79,7 @@ class BankZX(ZX):
     def __init__(self, real=False):
         self.uart=UART(real);self.pages=[];super().__init__()
         rom=self.read(0,0x4000);self.write(0,rom,rom_page=1);self.model=Spectrum128
+        self.devices=Dispatcher([self,self.kb,Beeper(Spectrum128)])
         self.set_on_output_callback(self.output)
         self.write(24000,(D/'bomber').read_bytes(),ram_page=0)
         self.write(0xc000,(D/'esp_bank').read_bytes(),ram_page=6)
@@ -84,9 +87,12 @@ class BankZX(ZX):
         self.poke(0x5b00,bytes.fromhex('3e1001fd7fed79c30f5b'))
         self.pc=0x5b00;self.run_until(0x5b0f)
         self.poke(0x5b5c,[16]);self.pc=24000
+    def now(self): return self.frame_count*70908+self.ticks_since_int
     def _input(self,port):
         value=self.uart.input(port)
-        return value if value is not None else super()._input(port)
+        if value is not None: return value
+        # No physical tape is playing in these peripheral tests.
+        return 0xff if port&1 else self.kb.read_port(port)&0xbf
     def output(self,port,value):
         if port==0x7ffd:self.pages.append(value)
         self.uart.output(port,value)
@@ -125,7 +131,7 @@ def test_api():
 def test_loader():
     z=BankZX()
     loader=(D/'loader128.bin').read_bytes()
-    z.poke(0x5b00,loader);z.pc=0x5b00;z.sp=23980
+    z.poke(0x8000,loader);z.pc=0x8000;z.sp=32760
     z.set_breakpoint(0x0556);z.set_breakpoint(24000)
     data=iter([(6,0xc000,(D/'esp_bank').read_bytes()),(0,24000,(D/'bomber').read_bytes())])
     loads=0
@@ -146,6 +152,7 @@ def test_boot():
     z.run_until(S('_flush_screen'),20)
     assert z.read8(S('_net_device'))==3
     assert z.read8(0x5b5c)==16
+    for _ in range(5): z.run_until(S('_flush_screen'),20)
     z.screenshot(D/'title.png')
     print('PASS: game boots and detects ESP network interface')
     return z

@@ -16,7 +16,7 @@ if '--prepare' in sys.argv:
     (D/'loader_sizes.inc').write_text('BANK_SIZE EQU %d\nGAME_SIZE EQU %d\n'%(len(bank),len(game)))
     sys.exit(0)
 loader=(D/'loader128.bin').read_bytes()
-assert len(loader)<=92
+assert len(loader)<=192
 
 def block(flag,data):
     body=bytes([flag])+data
@@ -34,11 +34,11 @@ def number(n):
 def line(n,text):
     text+=b'\x0d'
     return struct.pack('>H',n)+struct.pack('<H',len(text))+text
-basic=(line(10,b'\xfd '+number(23999))+
+basic=(line(10,b'\xfd '+number(32767))+
        line(20,b'\xef "" \xaf')+
-       line(30,b'\xf9 \xc0 '+number(23296)))
+       line(30,b'\xf9 \xc0 '+number(32768)))
 tape=(header(0,'Bomber128',basic,10,len(basic))+block(255,basic)+
-      header(3,'ESP loader',loader,23296,0x8000)+block(255,loader)+
+      header(3,'ESP loader',loader,32768,0x8000)+block(255,loader)+
       block(255,bank)+block(255,game))
 (D/'bombernet_esp01_128_alpha1.tap').write_bytes(tape)
 # Re-read every TAP block and its XOR checksum, including the raw data blocks.

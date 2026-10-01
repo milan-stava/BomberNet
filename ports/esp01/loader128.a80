@@ -1,9 +1,21 @@
-; BASIC has CLEAR 23999. This loader lives below the 128K BANKM variable.
+; BASIC loads this bootstrap at 8000h with CLEAR 32767.
+; After entering machine code, copy the loader below game origin (5D00h).
+; Do not overwrite the 128K ROM paging routines in the printer buffer.
 ; Raw data blocks follow its ordinary CODE block: driver bank, then game.
     DEVICE ZXSPECTRUM48
-    ORG #5b00
+    ORG #8000
     INCLUDE "loader_sizes.inc"
     OUTPUT "loader128.bin"
+bootstrap:
+    di
+    ld hl,body_src
+    ld de,#5d00
+    ld bc,body_len
+    ldir
+    ld sp,24000
+    jp #5d00
+body_src:
+    DISP #5d00
 start:
     ld a,22
     call page
@@ -43,5 +55,7 @@ page:
     ld (#5b5c),a
     ei
     ret
-    ASSERT $ <= #5b5c
+body_len EQU $-start
+    ASSERT $ <= 24000-96
+    ENT
     OUTEND
