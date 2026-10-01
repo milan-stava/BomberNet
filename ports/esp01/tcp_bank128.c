@@ -9,7 +9,6 @@
 #include "bank_entries.h"
 extern uint8_t esp_stage[];
 #define STAGE esp_stage
-#define STAGE_SIZE 256
 static uint16_t bank_call(uint16_t entry,uint16_t p1,uint16_t p2) __naked {
   __asm
     pop af
@@ -62,7 +61,7 @@ eb_locked:
     pop iy
     pop ix
     ret
-; These writable words belong to fixed CODE, never to the paged game's BSS.
+; Fixed RAM state for page changes.
 eb_arg1: defw 0
 eb_arg2: defw 0
 eb_target: defw 0
@@ -100,7 +99,7 @@ uint8_t tcp_send(const uint8_t *buf,uint16_t n) {
   uint8_t e;
   if(!buf && n) return 3;
   do {
-    part=n>STAGE_SIZE ? STAGE_SIZE : n;
+    part=n>256 ? 256 : n;
     if(part) memcpy(STAGE,buf,part);
     e=(uint8_t)bank_call(ESP_SEND,(uint16_t)STAGE,part);
     if(e) return e;
@@ -112,7 +111,7 @@ uint8_t tcp_send(const uint8_t *buf,uint16_t n) {
 int16_t tcp_recv(uint8_t *buf,uint16_t max) {
   int16_t n;
   if(!buf && max) return -1;
-  if(max>STAGE_SIZE) max=STAGE_SIZE;
+  if(max>256) max=256;
   n=(int16_t)bank_call(ESP_RECV,(uint16_t)STAGE,max);
   if(n>0) memcpy(buf,STAGE,(uint16_t)n);
   return n;

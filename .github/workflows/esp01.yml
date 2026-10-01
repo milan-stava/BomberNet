@@ -45,6 +45,7 @@ jobs:
           cd ../..
           python3 ports/esp01/pack_game128.py
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: esp01-game-build
           path: build/esp01-128/*
