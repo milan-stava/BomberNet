@@ -62,3 +62,27 @@ def faults():
         assert z.call('_tcp_error')==error,(mode,z.call('_tcp_error'))
     print('PASS: fast bank UART full, bounded timeout, query errors, framing checks')
 if __name__=='__main__':busy_send();faults()
+
+class StuckUART(UART):
+    def __init__(self):
+        super().__init__();self.stuck=True;self.power_cycles=0
+    def output(self,port,byte):
+        if port==0x713b and not byte&1:
+            self.power_cycles+=1;self.stuck=False
+            self.cmd.clear();self.left=0;self.wire.clear()
+        if self.stuck and port==0x133b:return
+        super().output(port,byte)
+
+def recovery():
+    uart=FaultUART();z=BankZX(uart=uart)
+    z.poke(0xc100,b'host\0');assert z.call('_tcp_open',0xc100,80)==0
+    uart.mode='fifo';assert z.call('_tcp_recv',0xc100,17)==65535
+    uart.mode='normal';z.call('_tcp_close')
+    assert z.call('_tcp_present')==1
+    assert z.call('_tcp_open',0xc100,80)==0
+    z.call('_tcp_close');assert z.call('_tcp_open',0xc100,80)==0
+    uart=StuckUART();z=BankZX(uart=uart)
+    assert z.call('_tcp_present')==1 and uart.power_cycles==1
+    print('PASS: poisoned driver reconnects, repeat open/close, unknown module state power recovery')
+
+if __name__=='__main__':recovery()

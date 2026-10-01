@@ -3,7 +3,7 @@
 ESP-01 port for MB03+ and eLeMeNt, based on the UART services documented in
 WiFi BIOS 2.0 by Busy and Hood.
 The ordinary upstream ZX build keeps Spectranet. This port provides a
-separate **128K game alpha 3 (fast frame and UART bank)**, **48K game alpha 1**,
+separate **128K game alpha 4 (connection recovery and passive receive)**, **48K game alpha 1**,
 and the standalone TCP alpha 3 test.
 
 ## Download without installing a compiler
@@ -256,3 +256,25 @@ rate measurement. The deterministic network match retains matching hashes.
 The hardware target is to reduce alpha 2's measured 11-second screen crossing
 closer to the local game's under-five-second crossing. Measure the same route
 with alpha 3: a twofold gameplay speedup is a target, not yet a hardware result.
+
+
+## 128K alpha 4: reconnect and passive reception
+
+Load `bombernet_esp01_128_alpha4.tap` on both peers. Normal exit now finishes
+an outstanding driver transaction, closes TCP and clears error/parser flags.
+Opening also attempts to close any connection left by an earlier program.
+An absent connection's CIPCLOSE error is discarded before probing AT again.
+If AT cannot recover an unknown ESP state, only module power is cycled, using
+ROM ticks for timing. Saved ESP Wi-Fi configuration is retained; association
+must recover through the module's saved configuration. UART baud is unchanged.
+
+Passive reception uses the available byte count from +IPD and CIPRECVLEN.
+It reads known remaining bytes without issuing CIPRECVLEN for each chunk.
+After that count is drained it checks once more, since new bytes may have
+arrived during reception. The WebSocket RX buffer is 192 bytes in this build.
+Simulation pacing, movement rules and the relay protocol remain unchanged.
+
+Hardware feedback shows 20 MHz restores approximately local movement speed
+and speeds the other peer too. That is consistent with lockstep waiting on
+the slowest device. This build reduces driver command round trips; hardware
+measurements at 3.5 MHz are still needed before claiming a specific speedup.
