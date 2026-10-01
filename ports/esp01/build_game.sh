@@ -9,4 +9,3 @@ zcc $flags -o build/spectranet/bomber $core $common c/platform/zx/tcp_spectranet
 cp ports/esp01/WifiBios20_MB_EL.cod WifiBios20_MB_EL.cod
 # Compile before packing a TAP, so the complete linker map can be inspected.
 zcc $flags -Iports/esp01 -o build/esp01/bomber $core $common ports/esp01/tcp_esp_at.c ports/esp01/esp_uart_bios.c
-python3 ports/esp01/memory_report.py build/spectranet/bomber.map build/esp01/bomber.map

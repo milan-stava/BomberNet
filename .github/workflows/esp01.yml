@@ -29,6 +29,7 @@ jobs:
       - name: Measure complete game memory
         run: |
           docker run --rm --entrypoint /bin/sh -v "$PWD:/src" -w /src z88dk/z88dk:latest ports/esp01/build_game.sh
+          python3 ports/esp01/memory_report.py build/spectranet/bomber.map build/esp01/bomber.map
       - uses: actions/upload-artifact@v4
         with:
           name: esp01-tcp-test
