@@ -24,6 +24,7 @@ def ring():
     assert not any(c.startswith('AT+CIPSEND=') or c.startswith('AT+CIPRECV') and c.endswith('?') for c in u.commands)
     assert z.call('_tcp_error')==0
     z.call('_tcp_close');assert not u.raw
+    z.poke(0xc100,b'host\0')
     assert z.call('_tcp_open',0xc100,80)==0
     print('PASS: 10KB binary RX ring wraps, bounded FIFO batches, raw transfer and command-mode reconnect')
 

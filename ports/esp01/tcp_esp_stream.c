@@ -79,26 +79,32 @@ uint8_t tcp_send(const uint8_t *buf,uint16_t n) __naked {
     or a
     jr z,stream_send_fail
     call es_deadline
+stream_send_more:
+    call stream_pump
+    ld a,(es_error)
+    or a
+    jr nz,stream_send_fail
+    ld a,32
+    ld (stream_budget),a
 stream_send_loop:
     ld hl,(es_sendlen)
     ld a,h
     or l
     jr z,stream_send_ok
-    call stream_pump
-    ld a,(es_error)
-    or a
-    jr nz,stream_send_fail
     ld hl,(es_sendptr)
     ld a,(hl)
     call es_write
-    jr c,stream_send_time
+    jr c,stream_send_counter
     ld hl,(es_sendptr)
     inc hl
     ld (es_sendptr),hl
     ld hl,(es_sendlen)
     dec hl
     ld (es_sendlen),hl
-stream_send_time:
+stream_send_counter:
+    ld hl,stream_budget
+    dec (hl)
+    jr nz,stream_send_loop
     ld hl,(es_tick)
     ex de,hl
     ld hl,(0x5c78)
@@ -107,7 +113,7 @@ stream_send_time:
     ld de,500
     or a
     sbc hl,de
-    jr c,stream_send_loop
+    jr c,stream_send_more
     ld a,2
     call es_fault
 stream_send_fail:
@@ -276,6 +282,7 @@ stream_normal: defm "AT+CIPMODE=0"
 stream_head: defs 2
 stream_tail: defs 2
 stream_count: defs 2
+stream_budget: defs 1
     ALIGN 4096
 stream_rx: defs 4096
     SECTION code_compiler
