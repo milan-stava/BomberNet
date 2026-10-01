@@ -52,6 +52,8 @@ def faults():
         from zxemu import sym_from_map
         from pathlib import Path
         uart.wire.clear()
+        addr=sym_from_map(Path('build/esp01-128/esp_bank.map'),'es_busy')
+        z.write(addr,b'\0',ram_page=6)
         addr=sym_from_map(Path('build/esp01-128/esp_bank.map'),'es_ready')
         z.write(addr,b'\0',ram_page=6)
         addr=sym_from_map(Path('build/esp01-128/esp_bank.map'),'es_pending')
@@ -112,3 +114,28 @@ def async_send():
     print('PASS: game computes with SEND OK pending; next send/close serialize completion')
 
 if __name__=='__main__':async_send()
+
+
+class TailUART(UART):
+    def __init__(self):super().__init__();self.injected=False
+    def output(self,port,byte):
+        if port==0x133b and byte==10 and not self.left and bytes(self.cmd).startswith(b'AT+CIPRECVDATA=') and not self.injected:
+            self.payload+=bytes(range(128))*3;self.injected=True
+        super().output(port,byte)
+
+def receive_tail():
+    uart=TailUART();z=BankZX(uart=uart)
+    z.poke(0xc100,b'host\0');assert z.call('_tcp_open',0xc100,80)==0
+    z.poke(0xc100,b'x');assert z.call('_tcp_send',0xc100,1)==0
+    got=bytearray()
+    for _ in range(10000):
+        n=z.call('_tcp_recv',0xc100,192)
+        if n==65535:break
+        got.extend(z.read(0xc100,n))
+    else:raise AssertionError('tail receive did not end')
+    assert got==uart.payload and z.call('_tcp_error')==0
+    queries=uart.commands.count('AT+CIPRECVLEN?')
+    assert queries<z.call('_tcp_read_commands'),uart.commands
+    print('PASS: bytes arriving after +IPD count are retained, fewer length queries than reads')
+
+if __name__=='__main__':receive_tail()
