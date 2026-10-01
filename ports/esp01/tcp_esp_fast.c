@@ -119,7 +119,7 @@ uint8_t tcp_send(const uint8_t *buf,uint16_t n) __naked {
     ld (es_sendlen),de
     ld a,d
     or e
-    jr z,es_send_ok
+    jp z,es_send_ok
     ld hl,(es_sendlen)
     ld de,2049
     or a
