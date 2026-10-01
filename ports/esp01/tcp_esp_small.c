@@ -819,9 +819,11 @@ es_discard: defs 1
 es_remain: defs 1
 es_rxlen: defs 1
 es_rxpos: defs 1
-es_line: defs 48
-es_rx: defs 64
-es_cmd: defs 128
+; 48K-only scratch: 240 bytes of the ROM printer buffer.
+; Do not run this backend under the 128K ROM's paging services.
+    defc es_cmd = 23296
+    defc es_line = 23424
+    defc es_rx = 23472
     SECTION code_compiler
  __endasm;
 }

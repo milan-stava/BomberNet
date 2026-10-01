@@ -17,11 +17,11 @@ class CompactZX(ZX):
         return super()._input(port)
     def output(self,port,value):self.uart.output(port,value)
     def call(self,name,*args):
-        words=[0x5b0f,*reversed(args)]
+        words=[0x5cd0,*reversed(args)]
         self.sp=0xfff0-len(words)*2
         self.poke(self.sp,b''.join(struct.pack('<H',x) for x in words))
         self.pc=S(name);before=self.sp
-        self.run_until(0x5b0f,20)
+        self.run_until(0x5cd0,20)
         assert self.sp==before+2,(name,'stack')
         return self.hl
 
@@ -29,17 +29,17 @@ def test_api():
     z=CompactZX()
     # Loading the binary includes zeroed BSS; reset ROM has initialized FRAMES/IY.
     assert z.call('_tcp_present')==1
-    z.poke(0x5b10,b'api.mzpico.com\0')
-    assert z.call('_tcp_open',0x5b10,80)==0
-    msg=bytes([0,1,62,13,10,255]);z.poke(0x5b10,msg)
-    assert z.call('_tcp_send',0x5b10,len(msg))==0
+    z.poke(0x5d00,b'api.mzpico.com\0')
+    assert z.call('_tcp_open',0x5d00,80)==0
+    msg=bytes([0,1,62,13,10,255]);z.poke(0x5d00,msg)
+    assert z.call('_tcp_send',0x5d00,len(msg))==0
     assert z.uart.sent==msg
     got=bytearray()
     for _ in range(10000):
-        n=z.call('_tcp_recv',0x5b10,17)
+        n=z.call('_tcp_recv',0x5d00,17)
         if n==65535:break
         assert n<=17
-        got.extend(z.read(0x5b10,n))
+        got.extend(z.read(0x5d00,n))
     else:raise AssertionError('receive never ended')
     assert got==z.uart.payload,(len(got),len(z.uart.payload))
     assert z.call('_tcp_error')==0 and z.call('_tcp_peer_closed')==1
