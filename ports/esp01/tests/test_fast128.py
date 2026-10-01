@@ -150,3 +150,30 @@ def receive_tail():
     print('PASS: bytes arriving after +IPD count are retained, fewer length queries than reads')
 
 if __name__=='__main__':receive_tail()
+
+
+class OldAppUART(UART):
+    def __init__(self):super().__init__();self.mux=True;self.old_socket=True;self.full=True;self.reg=0
+    def input(self,p):
+        if p==0x133b and self.full:return 5
+        return super().input(p)
+    def output(self,p,v):
+        if p==0x7c3b:self.reg=v
+        elif p==0x7d3b and self.reg==0x30 and v==1:self.full=False;self.wire.clear()
+        if p==0x133b and v==10 and not self.left:
+            cmd=bytes(self.cmd)+bytes([v])
+            if cmd==b'AT+CIPCLOSE=5\r\n':
+                self.cmd.clear();self.commands.append(cmd.decode().strip());self.old_socket=False;self.text('OK\r\n');return
+            if cmd==b'AT+CIPMUX=0\r\n' and self.old_socket:
+                self.cmd.clear();self.text('ERROR\r\n');return
+        super().output(p,v)
+
+def old_application():
+    uart=OldAppUART();z=BankZX(uart=uart)
+    assert z.call('_tcp_present')==1 and not uart.full
+    z.poke(0xc100,b'host\0');assert z.call('_tcp_open',0xc100,80)==0
+    assert not uart.old_socket
+    assert uart.commands.index('AT+CIPCLOSE=5')<uart.commands.index('AT+CIPMUX=0')
+    print('PASS: hardware FIFO overflow recovery and old multiplexed sockets closed before setup')
+
+if __name__=='__main__':old_application()

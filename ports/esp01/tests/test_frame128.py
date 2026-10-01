@@ -44,3 +44,30 @@ def availability():
     print('PASS: assembly availability scan matches reference at window/wrap boundaries')
 
 if __name__=='__main__':availability()
+
+
+def sound_and_reset():
+    from test_bank128 import UART
+    class AudioUART(UART):
+        def __init__(self):super().__init__();self.ay=[]
+        def output(self,p,v):
+            if p in (0xfffd,0xbffd):self.ay.append((p,v))
+            super().output(p,v)
+    uart=AudioUART();z=BankZX(uart=uart)
+    z.poke(S('_net_active'),[0]);t=z.now();z.call('_plat_tone',0x030a,14);old=z.now()-t
+    z.poke(S('_net_active'),[1]);t=z.now();z.call('_plat_tone',0x030a,14);fast=z.now()-t
+    assert fast<old*.2,(old,fast)
+    assert uart.ay[-2:]==[(0xfffd,8),(0xbffd,12)]
+    z.poke(S('_net_active'),[0]);z.call('_plat_frame_sync')
+    assert uart.ay[-2:]==[(0xfffd,8),(0xbffd,0)]
+    # Stage reset is the deathmatch respawn boundary, not every death.
+    z.call('_players_setup',2);z.poke(S('_game_mode'),[1])
+    p=S('_players');z.poke(p+3,[10,10,13]);z.poke(p+8,[1])
+    z.call('_players_stage_reset')
+    assert z.read8(p+5)==1 and z.read8(p+8)==0 and z.read8(p)==1
+    z.call('_draw_players')
+    assert z.read8(S('_draw_buf')+410)==z.read8(p+12)
+    # Field offsets follow player_t in game.h (all byte fields before score).
+    print('PASS: network AY tone %.3fms instead of %.3fms; volume stops after match'%(fast/3500,old/3500))
+
+if __name__=='__main__':sound_and_reset()

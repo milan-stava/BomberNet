@@ -57,6 +57,11 @@ uint8_t tcp_open(const char *host,uint16_t port) __naked {
     ; Also close a socket left by another program or an earlier failed open.
     call es_clear
     call es_drain
+    ; A previous application may have left CIPMUX=1 sockets open.
+    ld hl,es_closeall
+    call es_command
+    call es_clear
+    call es_drain
     ld hl,es_close
     call es_command
     ; ERROR means there was no socket; it is harmless here.
@@ -901,6 +906,8 @@ es_send: defm "AT+CIPSEND="
 es_length: defm "AT+CIPRECVLEN?"
     defb 13,10,0
 es_receive: defm "AT+CIPRECVDATA=192"
+    defb 13,10,0
+es_closeall: defm "AT+CIPCLOSE=5"
     defb 13,10,0
 es_close: defm "AT+CIPCLOSE"
     defb 13,10,0
