@@ -8,7 +8,7 @@ g=symbols(D/'bomber.map'); b=symbols(D/'esp_bank.map')
 assert g['__head']==24000 and g['__BSS_END_tail']<=0xfdff
 for name in ['_tcp_present','_tcp_open','_tcp_send','_tcp_recv','_tcp_close','eb_return','eb_arg1','eb_sp','eb_init','_esp_stage']:
     assert g[name]<0xc000, '%s is not in fixed RAM' % name
-assert g['_esp_stage']+256<=0xc000
+assert g['_esp_stage']==23808 and g['_esp_stage']+192<=24000
 assert b['__head']==0xc000 and b['__BSS_END_tail']<=0xfdff
 assert 24000+len(game)<=g['__BSS_END_tail']
 assert 0xc000+len(bank)<=b['__BSS_END_tail']

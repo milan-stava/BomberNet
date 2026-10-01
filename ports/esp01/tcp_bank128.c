@@ -80,7 +80,7 @@ static uint8_t initialized(uint8_t mark) __z88dk_fastcall __naked {
     ret
 eb_init: defb 0
     PUBLIC _esp_stage
-_esp_stage: defs 256
+defc _esp_stage = 23808
   __endasm;
 }
 uint8_t tcp_present(void) {
@@ -101,7 +101,7 @@ uint8_t tcp_send(const uint8_t *buf,uint16_t n) {
   uint8_t e;
   if(!buf && n) return 3;
   do {
-    part=n>256 ? 256 : n;
+    part=n>192 ? 192 : n;
     if(part) memcpy(STAGE,buf,part);
     e=(uint8_t)bank_call(ESP_SEND,(uint16_t)STAGE,part);
     if(e) return e;
@@ -113,7 +113,7 @@ uint8_t tcp_send(const uint8_t *buf,uint16_t n) {
 int16_t tcp_recv(uint8_t *buf,uint16_t max) {
   int16_t n;
   if(!buf && max) return -1;
-  if(max>256) max=256;
+  if(max>192) max=192;
   n=(int16_t)bank_call(ESP_RECV,(uint16_t)STAGE,max);
   if(n>0) memcpy(buf,STAGE,(uint16_t)n);
   return n;
