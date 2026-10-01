@@ -31,3 +31,25 @@ def ring():
 if __name__=='__main__':
     assert STREAM
     busy_send();old_application();ring()
+
+def closes_and_timeout():
+    for data in [b'\x88\0',b'\r\nCLOSED\r\n']:
+        u=UART();u.payload=b'';z=BankZX(uart=u)
+        z.poke(0xc100,b'host\0');assert z.call('_tcp_open',0xc100,80)==0
+        u.wire.extend(data);z.poke(__import__('test_bank128').S('_ws_open_now'),[1])
+        assert z.call('_ws_poll')==0
+        assert z.read8(__import__('test_bank128').S('_ws_lost'))==1 and not u.raw
+        assert z.call('_tcp_open',0xc100,80)==0
+    class JamUART(UART):
+        jam=False
+        def input(self,p):
+            if self.jam and p==0x133b:return 2
+            return super().input(p)
+    u=JamUART();z=BankZX(uart=u);z.poke(0xc100,b'host\0')
+    assert z.call('_tcp_open',0xc100,80)==0
+    u.jam=True;z.poke(0xc100,b'x')
+    assert z.call('_tcp_send',0xc100,1)==1 and z.call('_tcp_error')==2
+    u.jam=False;z.call('_tcp_close')
+    print('PASS: WebSocket/ESP close detected, reconnect and bounded stuck TX deadline')
+
+if __name__=='__main__':closes_and_timeout()
