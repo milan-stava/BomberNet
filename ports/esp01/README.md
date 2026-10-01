@@ -1,8 +1,10 @@
 # ESP-01 for MB03+ and eLeMeNt
 
-ESP-01 port for MB03+ and eLeMeNt, using WiFi BIOS 2.0 by Busy and Hood.
+ESP-01 port for MB03+ and eLeMeNt, based on the UART services documented in
+WiFi BIOS 2.0 by Busy and Hood.
 The ordinary upstream ZX build keeps Spectranet. This port provides a
-separate **128K game alpha 1** plus the standalone TCP alpha 3 test.
+separate **128K game alpha 2 (fast UART bank)**, **48K game alpha 1**,
+and the standalone TCP alpha 3 test.
 
 ## Download without installing a compiler
 
@@ -71,7 +73,7 @@ with the current compiler ended at 69182 (0x10e3e), including BSS, beyond
 must be reduced before shipping a complete game. BSS_END, not BSS_tail, is
 the total allocation boundary in the z88dk linker map. The 128K game below solves this by paging the verified driver separately.
 
-## BomberNet ESP-01 128K game alpha 1
+## BomberNet ESP-01 128K game alpha 1 (historical BIOS backend)
 
 Download `bombernet_esp01_128_alpha1.tap` from the `esp01-game-build` Actions
 artifact. This is the complete game, with the upstream WebSocket/relay and
@@ -178,3 +180,48 @@ The 48K TAP awaits hardware testing. The 518-byte total stack allowance is
 small; the observed watermark covers the tested two-player scenario, not every
 possible game state. Start with NETWORK -> HOST, two players / one local,
 then JOIN from a second instance as with the 128K version.
+
+
+## BomberNet ESP-01 128K game alpha 2 — fast UART bank
+
+Download **`bombernet_esp01_128_alpha2.tap`** from `esp01-game-build` after a
+successful Actions run. Load from the beginning in **128K mode with paging
+unlocked**, just as alpha 1. Wi-Fi association and UART baud stay as configured.
+To compare network speed, use alpha 2 on both participating machines: lockstep
+still waits for the slower peer. The 48K alpha 1 is unchanged by this work.
+
+The driver in bank 6 now uses `tcp_esp_fast.c`, Z80 assembly accessing the
+same UART ports directly; the full BIOS and C byte/parser layers are no longer
+on the game path. Command and payload writes use bounded bursts of at most
+32 bytes, respecting TX-busy and draining received notifications between
+payload bursts. Passive reads fetch at most 192 bytes, preceded by a length
+query. Both ESP response formats, trailing/early CLOSED, UART-full, AT errors
+and 10-second operation deadlines remain covered. All scratch remains in bank
+6 or the game's fixed staging area; no printer-buffer reuse in this build.
+The core uses stronger compiler optimizations; game speed target (60ms/step),
+movement rules, BUILD_ID and network protocol remain the same.
+
+Measured immediate-UART CPU cost at 3.5MHz, including bridge/staging/paging:
+
+| Payload | Alpha 1 | Alpha 2 | CPU speedup |
+| --- | ---: | ---: | ---: |
+| 32 bytes | 43.00ms | 9.05ms | 4.75x |
+| 64 bytes | 64.34ms | 11.64ms | 5.53x |
+| 128 bytes | 108.83ms | 16.80ms | 6.48x |
+| 256 bytes | 195.38ms | 27.00ms | 7.24x |
+
+These are instruction-cycle measurements with simulated UART responses, not
+serial baud/ESP processing or server latency. The full-match profiler also
+shows lower network handling time, but that includes waiting for an accelerated
+emulator's local relay and is not a hardware frame-rate claim. Render/update
+routines are recorded separately in `profile.json`; deterministic send costs
+and the captured original baseline are in `bench.json` and
+`tests/baseline128_bench.json`.
+
+The main image including BSS is 40709 bytes, end 64709 (FCC5h), leaving 826
+bytes below SP. The ESP bank including BSS is 2147 bytes, end 51299 (C863h),
+leaving 14236 bytes below its own SP. The TAP is 43063 bytes. Loader/bank maps,
+binary TCP with fragmented old/new headers, early/final close, TX-backpressure,
+errors/timeouts, and a two-instance relay match of 90 steps pass. Hashes at
+16/32/48/64/80 agree with no aborts; observed game stack headroom about
+493–506 bytes. Real ESP/game speed still awaits user testing of alpha 2.
