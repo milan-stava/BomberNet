@@ -533,7 +533,11 @@ static void handle_line(const char *l) {
     else { s_slot = (uint8_t)v; s_state = NETST_INROOM; }
     s_members = 1; s_ready = 0; s_started = 0; s_full = 0;
     frames_clear();
-    mq_head=mq_tail=0; s_err=0;
+#ifdef ESP_FAST128
+  #ifdef ESP_FAST128
+  mq_head=mq_tail=0; s_err=0;
+#endif
+#endif
     if (pend) pend_done = 1;
   } else if (!strcmp(op, "members")) {
     s_members = (uint8_t)jint(l, "\"count\"", s_members);

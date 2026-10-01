@@ -208,6 +208,47 @@ static void zx_ay(uint16_t rv) __z88dk_fastcall __naked {
     ret
   __endasm;
 }
+static void ay_tone(uint16_t ratio,uint8_t len) __naked {
+  __asm
+    pop af
+    pop de
+    pop hl
+    push hl
+    push de
+    push af
+    ld a,e
+    rrca
+    rrca
+    rrca
+    rrca
+    and 15
+    inc a
+    ld (_ay_ticks),a
+    ld a,(0x5c78)
+    ld (_ay_start),a
+    ld a,1
+    ld (_ay_active),a
+    srl h
+    rr l
+    srl h
+    rr l
+    srl h
+    rr l
+    ld a,h
+    and 15
+    ld d,a
+    ld h,l
+    ld l,0
+    call _zx_ay
+    ld h,d
+    ld l,1
+    call _zx_ay
+    ld hl,0x3e07
+    call _zx_ay
+    ld hl,0x0c08
+    jp _zx_ay
+  __endasm;
+}
 static void ay_update(void) {
   if (ay_active && (!net_active || (uint8_t)(*FRAMES_LO-ay_start)>=ay_ticks)) {
     zx_ay(8); ay_active=0;
@@ -276,12 +317,7 @@ void plat_tone(uint16_t ratio, uint8_t len) {
   if (ratio < 0x0100) ratio = 0x0100;
 #ifdef ESP_FAST128
   if (net_active) {
-    /* Hardware AY plays concurrently; never busy-wait for remote footsteps. */
-    half=(ratio>>3)-(ratio>>5);
-    zx_ay((half<<8));
-    zx_ay((half&0x0f00)|1);
-    zx_ay(0x3e07); zx_ay(0x0c08);
-    ay_start=*FRAMES_LO; ay_ticks=(len>>4)+1; ay_active=1;
+    ay_tone(ratio,len);
     return;
   }
 #endif

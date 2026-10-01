@@ -604,8 +604,10 @@ static uint8_t net_lobby(void) {
       strcpy(lobby_extra, "WAITING FOR THE HOST");
     } else if (L.seats < net_total) {
       strcpy(lobby_extra, "WAITING FOR PLAYERS");
+#ifdef ESP_FAST128
     } else if (L.host && st.members<2) {
       strcpy(lobby_extra, "SPACE READY TO START");
+#endif
     } else if (L.host ? L.samples[0] == 0 : !L.got_delay) {
       strcpy(lobby_extra, L.host ? "MEASURING THE LINK" : "HOST MEASURES THE LINK");
     } else {
