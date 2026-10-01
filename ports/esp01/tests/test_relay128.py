@@ -27,7 +27,27 @@ def main():
         assert z.call('_tcp_error')==0
         z.call('_net_leave')
         assert z.call('_net_create',build,2,settings,2,code,slot)==0, 'reconnect after leave'
-        z.call('_net_leave')
+        # Complete a new HOST room with a peer, including link ping/pong and READY.
+        peer=BankZX(real=True);peer.pc=24000;peer.run_until(S('_flush_screen'),20)
+        peer.poke(code,z.read(code,5));buf=settings+112
+        assert peer.call('_net_join',build,code,slot,S('_net_slots'),settings,buf)==0
+        z.poke(buf,bytes([1,42]));assert z.call('_net_msg_send',255,buf,2)==0
+        for _ in range(1000):
+            if peer.call('_net_msg_recv',buf+16,buf+20)==2:break
+        else:raise AssertionError('new HOST ping not received')
+        assert peer.read(buf+20,2)==bytes([1,42])
+        peer.poke(buf,bytes([2,42]));peer.call('_net_msg_send',0,buf,2)
+        for _ in range(1000):
+            if z.call('_net_msg_recv',buf+16,buf+20)==2:break
+        else:raise AssertionError('new HOST pong not received')
+        assert z.read(buf+20,2)==bytes([2,42])
+        peer.call('_net_ready',1,buf,buf+2)
+        for _ in range(1000):
+            z.call('_net_ready',1,buf,buf+2)
+            if z.read16(buf)!=65535:break
+        else:raise AssertionError('new HOST READY did not start')
+        z.call('_net_leave');peer.call('_net_leave')
+        print('PASS: re-HOST with peer link ping/pong and READY start')
         subprocess.run([sys.executable,os.environ.get('ESP_MATCH','ports/esp01/tests/match128.py'),'60'],check=True,timeout=180)
         print('PASS: real game WebSocket handshake, relay room creation %s, bank-0 pointers and leave'%room)
     finally:

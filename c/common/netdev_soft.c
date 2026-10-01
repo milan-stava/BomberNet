@@ -534,9 +534,7 @@ static void handle_line(const char *l) {
     s_members = 1; s_ready = 0; s_started = 0; s_full = 0;
     frames_clear();
 #ifdef ESP_FAST128
-  #ifdef ESP_FAST128
-  mq_head=mq_tail=0; s_err=0;
-#endif
+    mq_head=mq_tail=0; s_err=0;
 #endif
     if (pend) pend_done = 1;
   } else if (!strcmp(op, "members")) {
@@ -667,7 +665,9 @@ uint8_t net_leave(void) {
   ws_close();
   s_state = net_device ? NETST_READY : NETST_NOLINK;
   s_started = 0; s_members = 0; s_ready = 0; s_full = 0;
+#ifdef ESP_FAST128
   mq_head=mq_tail=0; s_err=0;
+#endif
   return 0;
 }
 

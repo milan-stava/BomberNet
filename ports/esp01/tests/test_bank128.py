@@ -68,6 +68,7 @@ class UART:
             if not self.real and self.pos==len(self.payload):self.text('CLOSED\r\n')
         elif cmd.startswith('AT+CIPSTART='):
             if self.real:
+                self.remote.clear();self.reported=False;self.peer_closed=False
                 self.sock=socket.create_connection(('127.0.0.1',8765));self.sock.setblocking(False)
             self.text('\r\nCONNECT\r\nOK\r\n')
         elif cmd=='AT+CIPCLOSE\r\n':
