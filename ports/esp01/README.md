@@ -286,3 +286,20 @@ starting another command, and receive/close continue the parser. Late SEND FAIL
 is reported as a lost connection. A delayed-ACK emulator test runs real game
 computation between payload transmission and ACK release. This overlaps ESP
 completion latency with game computation without predicting player input.
+
+
+The receive command is now started within the same bank call, with two bounded
+pump passes to consume an already available response. The frequent lockstep
+availability scan is implemented in Z80 assembly and compared with a reference
+across ring/wrap boundaries. Final alpha 4 TAP size: 43,385 bytes; game BSS ends
+at 64847 (FD4F), leaving 688 bytes below the initial stack. The 90-step CI match
+leaves at least 354 bytes unused above game allocation.
+
+Simulated recovery, reopen, unknown-state power recovery, delayed ACK, late
+SEND FAIL, and data arriving after a passive notification count all pass.
+Two-player and four-player relay matches retain matching state hashes.
+Send call time in one emulated relay profile is about 9.8 ms versus alpha 3's
+20.7 ms, but this includes ESP/relay waiting. Full-match timing varies with
+host scheduling and does not establish a twofold hardware movement speedup.
+Test repeat HOST/JOIN after leaving a match and the same screen crossing at
+3.5 MHz on both peers; saved Wi-Fi association is required after power recovery.
