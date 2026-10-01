@@ -556,12 +556,10 @@ uint8_t net_status(net_status_t *st) {
 
 #ifdef ESP01_COMPACT48
 /* HOST/JOIN are synchronous and never need their paths at the same time. */
-static char room_path[40];
+static char path[40];
 #endif
 uint8_t net_create(uint16_t build, uint8_t slots, const uint8_t *settings, uint8_t len, char code[5], uint8_t *slot) {
-#ifdef ESP01_COMPACT48
-  char *path = room_path;
-#else
+#ifndef ESP01_COMPACT48
   static char path[32];
 #endif
   char *p;
@@ -582,9 +580,7 @@ uint8_t net_create(uint16_t build, uint8_t slots, const uint8_t *settings, uint8
 }
 
 uint8_t net_join(uint16_t build, const char *code, uint8_t *slot, uint8_t *slots, uint8_t *settings, uint8_t *len) {
-#ifdef ESP01_COMPACT48
-  char *path = room_path;
-#else
+#ifndef ESP01_COMPACT48
   static char path[40];
 #endif
   char *p;
