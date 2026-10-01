@@ -1,8 +1,8 @@
 # ESP-01 for MB03+ and eLeMeNt
 
-Initial TCP driver for BomberNet, using WiFi BIOS 2.0 by Busy and Hood.
-The original game build continues to use Spectranet. This directory contains
-a standalone TCP test; game integration follows hardware validation.
+ESP-01 port for MB03+ and eLeMeNt, using WiFi BIOS 2.0 by Busy and Hood.
+The ordinary upstream ZX build keeps Spectranet. This port provides a
+separate **128K game alpha 1** plus the standalone TCP alpha 3 test.
 
 ## Download without installing a compiler
 
@@ -62,11 +62,81 @@ query/UART/framing errors remain errors. Requires CIPRECVLEN support.
 
 Hardware alpha 2 received a complete 601-byte HTTP response with a 50-byte
 body; its third passive read returned AT error. Alpha 3 tests the corrected
-end handling. The test should print a complete HTTP response and ERROR CODE 0.
+end handling. Hardware alpha 3 passed: 611 total bytes, 50 body bytes, two data reads,
+ERROR CODE 0 and peer closed.
 
 This is still a standalone test. Full-game memory measurement of alpha 2
 with the current compiler ended at 69182 (0x10e3e), including BSS, beyond
 48K RAM. The Spectranet baseline ended at 64385 (0xfb81). The test backend
 must be reduced before shipping a complete game. BSS_END, not BSS_tail, is
-the total allocation boundary in the z88dk linker map. Game size work is
-postponed until this hardware test passes.
+the total allocation boundary in the z88dk linker map. The 128K game below solves this by paging the verified driver separately.
+
+## BomberNet ESP-01 128K game alpha 1
+
+Download `bombernet_esp01_128_alpha1.tap` from the `esp01-game-build` Actions
+artifact. This is the complete game, with the upstream WebSocket/relay and
+simulation unchanged (build id 0x0604). The standalone `esp01-tcp-test`
+artifact remains available separately.
+
+### Run on MB03+ / eLeMeNt
+
+- Enable the ordinary **128K Spectrum paging mode** (port 7FFD must remain
+  unlocked). A locked 48K mode cannot load this version.
+- ESP must already be connected to Wi-Fi. Retain the working UART baud
+  from the alpha 3 test; no credentials or baud changes are made.
+- Load the TAP from its beginning. BASIC loads a bootstrap at 8000h, which
+  relocates its short loader below the game at 5D00h. It switches to 48K ROM,
+  verifies that banks 0 and 6 are distinct, loads the ESP bank, then the game.
+- A persistent red border means the bank probe or tape block load failed.
+  Reset before retrying in 128K mode. The loader does not return to BASIC.
+- The title must offer NETWORK. Use QAOP and SPACE, select HOST, two total
+  players and one local player; create a room and report its four-letter code.
+  JOIN uses the original game's room-code input. A second compatible client
+  is needed to start a network match.
+
+### Memory and bank safety
+
+Game origin 24000 (5DC0h), allocation end 64807 (FD27h), including all BSS;
+728 bytes remain below SP=FFFFh. The verified driver occupies bank 6 from
+C000h through D7A3h: 6052 allocated bytes and 10331 bytes below its own SP.
+A 512-byte stack reserve is enforced independently for both images.
+
+The bridge and its 256-byte staging area are linked first, below C000h.
+It copies host names/send bytes before paging, reads received bytes back
+only after restoring bank 0, and switches stacks with interrupts disabled
+for the paging sequence. ROM interrupts run normally inside the driver.
+IX/IY and BANKM at 5B5Ch are preserved/restored. No game/library routine runs
+from the paged game bank while the ESP bank is selected.
+
+The 256-byte printer buffer at 23296 (5B00h) is **not used** as staging.
+On 128K it contains paging routines and BANKM at 23388; overwriting all of
+it would corrupt the bank state. Reuse for a future unbanked 48K version
+requires a separate audit of ROM/peripheral use.
+
+### Validation and remaining hardware test
+
+- GCC driver tests with address/undefined-behavior sanitizers pass.
+- Both Z80 images compile and pass the allocation checks; all bridge entry
+  points and shared bytes are checked to be below C000h.
+- Compiled Z80 code runs with native 128K paging in `zx` 0.13.15 and a
+  simulated UART: binary data, fragmented replies, bank-0 caller pointers,
+  caller stack restoration and clean peer close pass.
+- The loader's bank probe and exact raw tape addresses/lengths pass with a
+  simulated ROM tape read. TAP block checksums are verified. Real tape/SD
+  loading still needs hardware confirmation.
+- The real upstream local relay accepts the compiled game's WebSocket
+  handshake, room creation and leave. Two emulated games then run 60 steps,
+  comparing state hashes at frames 16, 32 and 48: no mismatches/aborts.
+  Stack watermark leaves roughly 395-403 bytes between game BSS and the
+  deepest observed stack use. This is a tested scenario, not a proof of
+  every stack path or real UART/game timing.
+- The complete 128K game has not yet been tested on the user's hardware.
+
+### Rebuild
+
+The Actions workflow assembles the supplied BIOS, links the ESP image,
+exports its entry addresses, links the fixed game-side bridge first, packs
+BASIC/loader/two images, and runs the emulator/relay tests. Local equivalents
+are `build_game128.sh`, `bank_layout.py`, `link_game128.sh`, `pack_game128.py`
+and `loader128.a80`. Use the same z88dk container and sjasmplus 1.20.3 as the
+workflow; run the Python steps on the host outside the compiler container.
