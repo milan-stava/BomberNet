@@ -34,6 +34,9 @@ class UART:
             elif not self.peer_closed:
                 self.peer_closed=True; self.text('\r\nCLOSED\r\n')
         except BlockingIOError: pass
+        except ConnectionResetError:
+            if not self.peer_closed:
+                self.peer_closed=True;self.text('\r\nCLOSED\r\n')
     def available(self): return len(self.remote) if self.real else len(self.payload)-self.pos
     def input(self,port):
         if port==0x133b:
@@ -58,7 +61,12 @@ class UART:
                 if self.real:self.sock.sendall(self.escape)
                 self.escape.clear()
             self.last_tx=self.now();self.sent.append(byte)
-            if self.real:self.sock.sendall(bytes([byte]));self.sent.clear()
+            if self.real:
+                try:self.sock.sendall(bytes([byte]))
+                except (BrokenPipeError,ConnectionResetError):
+                    if not self.peer_closed:
+                        self.peer_closed=True;self.text('\r\nCLOSED\r\n')
+                self.sent.clear()
             elif not self.raw_delivered:
                 self.wire.extend(self.payload);self.pos=len(self.payload);self.raw_delivered=True
             return
