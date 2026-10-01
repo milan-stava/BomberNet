@@ -53,3 +53,12 @@ def closes_and_timeout():
     print('PASS: WebSocket/ESP close detected, reconnect and bounded stuck TX deadline')
 
 if __name__=='__main__':closes_and_timeout()
+
+
+def inherited_stream():
+    u=UART();u.raw=True;u.payload=b'';z=BankZX(uart=u)
+    assert z.call('_tcp_present')==1 and not u.raw
+    z.poke(0xc100,b'host\0');assert z.call('_tcp_open',0xc100,80)==0
+    print('PASS: inherited transparent session escaped before AT setup without module reset')
+
+if __name__=='__main__':inherited_stream()

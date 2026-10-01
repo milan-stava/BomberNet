@@ -1,9 +1,0 @@
-#!/bin/sh
-set -eu
-cd "$(dirname "$0")/../.."
-mkdir -p build/esp01 build/spectranet
-core='c/core/bomber.c c/core/netplay.c c/core/data.c c/core/map.c c/core/game.c c/core/input.c c/core/video.c c/core/enemy.c c/core/bomb.c c/core/player.c'
-common='c/platform/zx/plat_zx.c c/platform/zx/tables.c c/common/netdev_soft.c c/common/ws.c c/common/z80_loops.c'
-flags='+zx -O3 -SO3 -DESP01_COMPACT48 -lndos -zorg=24000 -pragma-define:REGISTER_SP=65535 -pragma-define:CLIB_EXIT_STACK_SIZE=0 -pragma-define:CRT_ENABLE_STDIO=0 -pragma-define:CLIB_OPEN_MAX=0 -pragma-redirect:fputc_cons=zx_no_console -m -Ic/core -Ic/common -Ic/platform/zx'
-# The compact backend accesses the documented UART ports directly.
-zcc $flags -create-app -Iports/esp01 -o build/esp01/bombernet_esp01_48_alpha1 $core $common ports/esp01/tcp_esp_small.c

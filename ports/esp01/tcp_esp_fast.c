@@ -16,7 +16,16 @@ es_present_probe:
     call es_command
     or a
     jr z,es_present_ok
-    ; An unknown payload/transparent mode cannot be recovered with AT alone.
+    ; Exit a previous transparent session without losing volatile Wi-Fi state.
+    call es_escape_unknown
+    or a
+    jr nz,es_present_power
+    ld hl,es_at
+    call es_command
+    or a
+    jr z,es_present_ok
+es_present_power:
+    ; A fixed-length payload state may still require module power recovery.
     ; Cycle only module power, keeping baud and persistent Wi-Fi credentials.
     ld bc,0x703b
     ld a,5
@@ -427,6 +436,54 @@ es_drain_byte:
     ld a,d
     or e
     jr nz,es_drain_loop
+    ret
+es_escape_unknown:
+    ld de,50
+    call es_pause
+    call es_deadline
+    ld b,3
+es_unknown_plus:
+    push bc
+    ld a,'+'
+    call es_write
+    pop bc
+    jr nc,es_unknown_sent
+    push bc
+    ld hl,(es_tick)
+    ex de,hl
+    ld hl,(0x5c78)
+    or a
+    sbc hl,de
+    ld de,500
+    or a
+    sbc hl,de
+    pop bc
+    jr c,es_unknown_plus
+    ld a,2
+    ret
+es_unknown_sent:
+    djnz es_unknown_plus
+    ld de,50
+    call es_pause
+    call es_clear
+    call es_drain
+    ; Terminate a stray command line too; do not wait for its response.
+    ld hl,es_crlf
+    call es_start
+es_unknown_crlf:
+    call es_pump
+    ld a,(es_error)
+    or a
+    ret nz
+    ld hl,(es_txptr)
+    ld a,h
+    or l
+    jr nz,es_unknown_crlf
+    ld de,1
+    call es_pause
+    call es_clear
+    call es_drain
+    xor a
     ret
 ; Wait for DE ROM ticks; independent of CPU turbo, interrupts stay enabled.
 es_pause:
