@@ -1,0 +1,47 @@
+; BASIC has CLEAR 23999. This loader lives below the 128K BANKM variable.
+; Raw data blocks follow its ordinary CODE block: driver bank, then game.
+    DEVICE ZXSPECTRUM48
+    ORG #5b00
+    INCLUDE "loader_sizes.inc"
+    OUTPUT "loader128.bin"
+start:
+    ld a,22
+    call page
+    ld hl,#c000
+    ld (hl),#55
+    ld a,16
+    call page
+    ld (hl),#aa
+    ld a,22
+    call page
+    ld a,(hl)
+    cp #55
+    jr nz,failed
+    ld ix,#c000
+    ld de,BANK_SIZE
+    ld a,#ff
+    scf
+    call #0556
+    jr nc,failed
+    ld a,16
+    call page
+    ld ix,24000
+    ld de,GAME_SIZE
+    ld a,#ff
+    scf
+    call #0556
+    jr nc,failed
+    jp 24000
+failed:
+    ld a,2
+    out (#fe),a
+    jr failed
+page:
+    di
+    ld bc,#7ffd
+    out (c),a
+    ld (#5b5c),a
+    ei
+    ret
+    ASSERT $ <= #5b5c
+    OUTEND

@@ -30,12 +30,20 @@ jobs:
         run: python3 ports/esp01/memory_report.py ports/esp01/esp01_tcp_test.map
       - name: Build ESP driver bank
         run: |
+          mkdir -p build/esp01-128
           docker run --rm --entrypoint /bin/sh -v "$PWD:/src" -w /src z88dk/z88dk:latest ports/esp01/build_game128.sh
           python3 ports/esp01/bank_layout.py
       - name: Link 128K game
         run: |
           docker run --rm --entrypoint /bin/sh -v "$PWD:/src" -w /src z88dk/z88dk:latest ports/esp01/link_game128.sh
           python3 ports/esp01/memory_report.py build/esp01-128/bomber.map
+      - name: Pack 128K game tape
+        run: |
+          python3 ports/esp01/pack_game128.py --prepare
+          cd build/esp01-128
+          "$RUNNER_TEMP/sjasmplus/sjasmplus" ../../ports/esp01/loader128.a80
+          cd ../..
+          python3 ports/esp01/pack_game128.py
       - uses: actions/upload-artifact@v4
         with:
           name: esp01-game-build

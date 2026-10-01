@@ -1,13 +1,14 @@
 /* Game-side TCP bridge, linked FIRST so this entire file stays below C000.
  * Caller pointers and its stack may be in bank 0. Stage bytes in the unused
- * Spectrum printer buffer (5B00..5BFF), then call bank 6 on its own stack.
+ * fixed-RAM staging area, then call bank 6 on its own stack.
  * No game function/library is called while bank 6 is mapped.
  */
 #include <stdint.h>
 #include <string.h>
 #include "tcp.h"
 #include "bank_entries.h"
-#define STAGE ((uint8_t *)0x5b00)
+extern uint8_t esp_stage[];
+#define STAGE esp_stage
 #define STAGE_SIZE 256
 static uint16_t bank_call(uint16_t entry,uint16_t p1,uint16_t p2) __naked {
   __asm
@@ -77,6 +78,8 @@ static uint8_t initialized(uint8_t mark) __z88dk_fastcall __naked {
     ld l,a
     ret
 eb_init: defb 0
+    PUBLIC _esp_stage
+_esp_stage: defs 256
   __endasm;
 }
 uint8_t tcp_present(void) {
