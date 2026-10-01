@@ -107,7 +107,11 @@ static void frame_common(void) {
   tick_timers();                      /* also presents the previous frame */
   draw_hud();
   draw_hud_icons();
+#ifdef ESP_FAST128
+  composite_frame();
+#else
   composite_map();
+#endif
 }
 
 static void frame(void) {
@@ -905,3 +909,4 @@ void main(void)
     run_game();
   }
 }
+

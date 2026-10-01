@@ -516,6 +516,10 @@ static void pump(void) {
   if (ws_lost) { ws_lost = 0; link_lost(); }
 }
 
+#ifdef ESP_FAST128
+/* Progress received inputs during the platform's otherwise idle frame wait. */
+void net_background(void) { pump(); }
+#endif
 static uint8_t send_line(void) { return ws_send(out); }   /* out has WS_HDR bytes in front */
 
 /* open the room's socket, send the first line (already in out), wait for the reply */

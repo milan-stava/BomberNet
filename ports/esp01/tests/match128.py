@@ -66,7 +66,8 @@ a.press('P'); b.press('O')                                       # both walk: in
 HP = 16
 seen = {'A': {}, 'B': {}}
 work = []
-COMP = S('_composite_map')
+try:COMP=S('_composite_frame')
+except KeyError:COMP=S('_composite_map')
 for z in (a, b): z.set_breakpoint(SYNC); z.set_breakpoint(COMP)
 last = {}
 def on_flush(i, z):                                # every frame of each machine

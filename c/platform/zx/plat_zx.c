@@ -192,9 +192,16 @@ uint8_t plat_key_char(void) {
 #define FRAMES_LO ((volatile uint8_t *)0x5c78)     /* ROM frame counter, +1 every 20 ms */
 static uint8_t last_tick;
 
+#ifdef ESP_FAST128
+extern void net_background(void);
+#endif
 void plat_frame_sync(void) {                       /* a game frame is three TV frames */
   uint8_t late = (uint8_t)(*FRAMES_LO - last_tick) >= 3;
-  while ((uint8_t)(*FRAMES_LO - last_tick) < 3) ;
+  while ((uint8_t)(*FRAMES_LO - last_tick) < 3) {
+#ifdef ESP_FAST128
+    if (net_active) net_background();
+#endif
+  }
   last_tick = *FRAMES_LO;
   /* A new TV frame has just begun: the beam is in the top border (64 lines,
    * 14,000 T-states) and the joystick ports can be read. After a frame that

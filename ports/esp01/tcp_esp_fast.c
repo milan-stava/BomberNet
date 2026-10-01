@@ -407,17 +407,24 @@ es_pump:
     ld a,(es_error)
     or a
     ret nz
-    ld b,64
+    ; B bounds bytes, C bounds consecutive empty status probes. No waits.
+    ld bc,0x8004
 es_pump_rx:
     push bc
     call es_read
-    jr c,es_pump_read_end
+    jr c,es_pump_empty
     call es_consume
     pop bc
+    ld c,4
     djnz es_pump_rx
     jr es_pump_tx
-es_pump_read_end:
+es_pump_empty:
     pop bc
+    ld a,(es_error)
+    or a
+    ret nz
+    dec c
+    jr nz,es_pump_rx
 es_pump_tx:
     ld b,32
 es_command_burst:
