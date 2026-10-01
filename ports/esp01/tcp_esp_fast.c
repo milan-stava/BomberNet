@@ -160,9 +160,14 @@ es_send_loop:
     ld a,(es_error)
     or a
     jr nz,es_send_fail
+    ; Drain notifications between bounded 32-byte TX bursts.
+    ld b,32
+es_send_burst:
     ld hl,(es_sendptr)
     ld a,(hl)
+    push bc
     call es_write
+    pop bc
     jr c,es_send_loop
     ld hl,(es_sendptr)
     inc hl
@@ -172,7 +177,10 @@ es_send_loop:
     ld (es_sendlen),hl
     ld a,h
     or l
-    jr nz,es_send_loop
+    jr z,es_send_complete
+    djnz es_send_burst
+    jr es_send_loop
+es_send_complete:
     call es_wait
     or a
     jr nz,es_send_fail
@@ -411,6 +419,8 @@ es_pump_rx:
 es_pump_read_end:
     pop bc
 es_pump_tx:
+    ld b,32
+es_command_burst:
     ld hl,(es_txptr)
     ld a,h
     or l
@@ -418,12 +428,15 @@ es_pump_tx:
     ld a,(hl)
     or a
     jr z,es_tx_done
+    push bc
     push hl
     call es_write
     pop hl
+    pop bc
     jr c,es_pump_time
     inc hl
     ld (es_txptr),hl
+    djnz es_command_burst
     jr es_pump_time
 es_tx_done:
     ld hl,0
