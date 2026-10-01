@@ -6,7 +6,7 @@ class RingUART(UART):
     def __init__(self):
         super().__init__();self.payload=b'';self.source=bytes(range(256))*40;self.offset=0
     def poll(self):
-        if self.raw and not self.wire and self.offset<len(self.source):
+        if self.raw and self.raw_delivered and not self.wire and self.offset<len(self.source):
             self.wire.extend(self.source[self.offset:self.offset+256]);self.offset+=256
 
 def ring():
