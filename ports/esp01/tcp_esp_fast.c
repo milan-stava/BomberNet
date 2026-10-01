@@ -636,8 +636,16 @@ es_remaining_valid:
     jr z,es_data_empty
     inc a
 es_data_empty:
-    ld (es_pending),a
     ld (es_ready),a
+    ; New bytes can arrive after the notification while a chunk is read.
+    ; Probe once after exhausting the known count instead of losing that tail.
+    ld a,(es_remain)
+    or a
+    ld a,0
+    jr z,es_no_tail
+    inc a
+es_no_tail:
+    ld (es_pending),a
     xor a
     ld (es_llen),a
     ret
