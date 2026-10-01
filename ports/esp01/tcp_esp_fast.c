@@ -215,9 +215,11 @@ es_send_burst:
     djnz es_send_burst
     jr es_send_loop
 es_send_complete:
-    call es_wait
-    or a
-    jr nz,es_send_fail
+    ; Payload is fully transmitted. Keep SEND OK pending so the game can
+    ; compute while the ESP completes it. The next send waits before issuing
+    ; another command; recv/present/close continue the same bounded parser.
+    ; Late SEND FAIL is reported by recv (and by the next send).
+
 es_send_ok:
     ld hl,0
     ret

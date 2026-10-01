@@ -278,3 +278,11 @@ Hardware feedback shows 20 MHz restores approximately local movement speed
 and speeds the other peer too. That is consistent with lockstep waiting on
 the slowest device. This build reduces driver command round trips; hardware
 measurements at 3.5 MHz are still needed before claiming a specific speedup.
+
+
+Once a send's payload has been written to UART, alpha 4 returns to the game
+while SEND OK is still pending. The next send waits for that completion before
+starting another command, and receive/close continue the parser. Late SEND FAIL
+is reported as a lost connection. A delayed-ACK emulator test runs real game
+computation between payload transmission and ACK release. This overlaps ESP
+completion latency with game computation without predicting player input.

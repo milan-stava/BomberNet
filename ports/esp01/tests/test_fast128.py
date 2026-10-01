@@ -86,3 +86,29 @@ def recovery():
     print('PASS: poisoned driver reconnects, repeat open/close, unknown module state power recovery')
 
 if __name__=='__main__':recovery()
+
+
+class DelayedAckUART(UART):
+    def __init__(self):
+        super().__init__();self.ack_pending=None;self.ack_delivered=False
+    def text(self,s):
+        if s=='\r\nSEND OK\r\n':
+            self.ack_pending=s;return
+        super().text(s)
+    def release(self):
+        assert self.ack_pending
+        UART.text(self,self.ack_pending);self.ack_pending=None;self.ack_delivered=True
+
+def async_send():
+    uart=DelayedAckUART();z=BankZX(uart=uart)
+    z.poke(0xc100,b'host\0');assert z.call('_tcp_open',0xc100,80)==0
+    z.poke(0xc100,b'hello');assert z.call('_tcp_send',0xc100,5)==0
+    assert uart.sent==b'hello' and uart.ack_pending and not uart.ack_delivered
+    # Do actual game work before the ESP's completion arrives.
+    z.call('_composite_frame');uart.release()
+    z.poke(0xc100,b'x');assert z.call('_tcp_send',0xc100,1)==0
+    uart.release();z.call('_tcp_close')
+    assert z.call('_tcp_error')==0
+    print('PASS: game computes with SEND OK pending; next send/close serialize completion')
+
+if __name__=='__main__':async_send()
