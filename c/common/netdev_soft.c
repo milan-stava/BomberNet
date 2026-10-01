@@ -124,6 +124,60 @@ static void store_input(uint16_t frame, uint8_t slot, const char *hex) {
 }
 
 /* highest frame up to which every frame is complete, 0xffff = none */
+#ifdef ESP_FAST128
+static uint16_t avail_frame(void) __naked {
+  __asm
+    ld a,(_s_full)
+    or a
+    jr nz,af_mask
+    ld a,(_s_slots)
+    ld b,a
+    xor a
+    or b
+    jr z,af_mask
+    ld a,1
+af_shift:
+    add a,a
+    djnz af_shift
+    dec a
+af_mask:
+    ld c,a
+    ld hl,(_s_base)
+af_scan:
+    ld a,h
+    and l
+    cp 255
+    jr z,af_done
+    ld a,l
+    and 15
+    ld e,a
+    ld d,0
+    push hl
+    ld hl,_have
+    add hl,de
+    ld a,(hl)
+    and c
+    cp c
+    jr nz,af_incomplete
+    ld (hl),0
+    pop hl
+    inc hl
+    jr af_scan
+af_incomplete:
+    pop hl
+af_done:
+    ld (_s_base),hl
+    ld a,h
+    or l
+    jr z,af_none
+    dec hl
+    ret
+af_none:
+    ld hl,65535
+    ret
+  __endasm;
+}
+#else
 static uint16_t avail_frame(void) {
   uint8_t full = s_full ? s_full : (uint8_t)((1 << s_slots) - 1);
   while (s_base != 0xffff && (have[(uint8_t)s_base & (WIN - 1)] & full) == full) {
@@ -132,6 +186,7 @@ static uint16_t avail_frame(void) {
   }
   return s_base ? s_base - 1 : 0xffff;
 }
+#endif
 
 /* ---------------- the per-frame path, kept short for the Z80 ----------------
  * Every frame sends one input line and receives one per other device; the
