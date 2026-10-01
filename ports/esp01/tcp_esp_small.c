@@ -314,22 +314,28 @@ es_close_end:
     ret
  __endasm;
 }
-uint8_t tcp_error(void) __naked { __asm
+uint8_t tcp_error(void) __naked {
+ __asm
     ld a,(es_error)
     ld l,a
     ld h,0
     ret
- __endasm; }
-uint8_t tcp_peer_closed(void) __naked { __asm
+ __endasm;
+}
+uint8_t tcp_peer_closed(void) __naked {
+ __asm
     ld a,(es_closed)
     ld l,a
     ld h,0
     ret
- __endasm; }
-uint16_t tcp_read_commands(void) __naked { __asm
+ __endasm;
+}
+uint16_t tcp_read_commands(void) __naked {
+ __asm
     ld hl,(es_reads)
     ret
- __endasm; }
+ __endasm;
+}
 /* Helpers are kept in one naked block to avoid compiler prologues. */
 static void esp_engine(void) __naked {
  __asm
