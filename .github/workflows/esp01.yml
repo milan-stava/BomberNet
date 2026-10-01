@@ -28,6 +28,16 @@ jobs:
           docker run --rm --entrypoint /bin/sh -v "$PWD:/src" -w /src/ports/esp01 z88dk/z88dk:latest -c 'zcc +zx -lndos -create-app -zorg=24000 -pragma-define:REGISTER_SP=65535 -m -I. -o esp01_tcp_test test_tcp.c tcp_esp_at.c esp_uart_bios.c'
       - name: Check test memory including BSS
         run: python3 ports/esp01/memory_report.py ports/esp01/esp01_tcp_test.map
+      - name: Build compact 48K game
+        run: |
+          docker run --rm --entrypoint /bin/sh -v "$PWD:/src" -w /src z88dk/z88dk:latest ports/esp01/build_game.sh
+          python3 ports/esp01/memory_report.py build/esp01/bombernet_esp01_48_alpha1.map
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: esp01-game-48-build
+          path: build/esp01/*
+          if-no-files-found: warn
       - name: Build ESP driver bank
         run: |
           mkdir -p build/esp01-128
