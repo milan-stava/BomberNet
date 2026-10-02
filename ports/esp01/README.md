@@ -9,8 +9,9 @@ and the standalone TCP alpha 3 test.
 ## Download without installing a compiler
 
 On branch `esp01-mb-el`, open **Actions → ESP01 MB03+ and eLeMeNt**.
-After a successful build, download the `esp01-tcp-test` artifact and extract
-`esp01_tcp_test.tap`. A green build verifies compilation and simulated UART
+For the complete 128K game, download `esp01-game-build` and extract
+`bombernet_esp01_128_alpha6.tap`. The separate `esp01-tcp-test` artifact
+contains the standalone `esp01_tcp_test.tap`. A green build verifies compilation and simulated UART
 tests, not real ESP hardware or gameplay.
 
 ## Hardware test
