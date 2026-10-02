@@ -216,50 +216,64 @@ static void ay_tone(uint16_t ratio,uint8_t len) __naked {
     push hl
     push de
     push af
-    ld a,e
-    rrca
-    rrca
-    rrca
-    rrca
-    and 15
-    inc a
-    ld (_ay_ticks),a
-    ld a,(0x5c78)
-    ld (_ay_start),a
     ld a,1
     ld (_ay_active),a
-    ; Bring the higher footstep closer to the lower one: 0x020a -> 0x028a.
-    ld a,h
-    cp 2
-    jr nz,ay_pitch_ready
-    ld a,l
-    cp 10
-    jr nz,ay_pitch_ready
-    ld l,0x8a
-ay_pitch_ready:
-    srl h
-    rr l
-    srl h
-    rr l
-    srl h
-    rr l
+    ; One-shot AY decay; six periods ~= 13.85 ms (beeper footstep 13-14 ms).
+    ld a,e
+    cp 32
+    ld a,6
+    jr c,ay_env_ready
+    ld a,e
+    cp 48
+    ld a,13
+    jr c,ay_env_ready
+    ld a,20
+ay_env_ready:
+    push af
+    ld c,l
     ld a,h
     and 15
-    ld d,a
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,ay_periods
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ex de,hl
+    ld a,c
+    cp 0x32
+    jp nz,ay_pitch_ready
+    ld de,5
+    add hl,de
+ay_pitch_ready:
+    ld d,h
     ld h,l
     ld l,0
     call _zx_ay
     ld h,d
     ld l,1
     call _zx_ay
+ay_registers:
     ld hl,0x3e07
     call _zx_ay
-    ld hl,0x0c08
+    ld hl,0x1008
+    call _zx_ay
+    pop af
+    ld h,a
+    ld l,11
+    call _zx_ay
+    ld hl,12
+    call _zx_ay
+    ld hl,0x090d
     jp _zx_ay
+ay_periods:
+    defw 6,27,52,78,103,129,154,180,205,231,256,283,307,334,358,385
   __endasm;
 }
 static void ay_update(void) {
-  if (ay_active && (!net_active || (uint8_t)(*FRAMES_LO-ay_start)>=ay_ticks)) {
+  if (ay_active && !net_active) {
     zx_ay(8); ay_active=0;
   }
 }

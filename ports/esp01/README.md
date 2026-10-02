@@ -393,3 +393,37 @@ images (CI run 36942743981 plus `link_recovery_overlay128.py`). It uses bridge
 space freed by assembly and appends only the 45-byte hash table to the game.
 Normal z88dk source builds include the changes directly. The 48K build is
 unchanged. Gameplay rules, BUILD_ID and relay protocol are unchanged.
+
+
+## 128K alpha 8: match reset and beeper-calibrated AY
+
+Load `bombernet_esp01_128_alpha8.tap` on both peers. Match seeding now clears
+inactive hit coordinates, which are part of the state hash. Previously an
+offline match could leave different coordinates on the two machines and
+cause DESYNC immediately on the next network match. Reset is at new match
+seeding only; active coordinates are preserved between stages. Coop death
+and respawn rules, 60 ms pacing and relay protocol remain unchanged.
+
+AY pitch is calibrated against measured original beeper edges at 3.5 MHz;
+seven representative ratios are within 2.5%. Footsteps use a one-shot decay
+envelope lasting approximately 13.86 ms instead of sustaining until the next
+network frame. The CPU returns in about 0.35 ms, without waiting for sound.
+AY timbre still differs from beeper. Frame sync only mutes when leaving network
+play; the envelope stops each network tone automatically.
+
+RX copies use LDIR with an exact split at the 4096-byte ring boundary, retaining
+192-byte staging, flow checks and deadlines. UART overflow, full-ring, wrap,
+reconnect, loader, pixel/hash equivalence, two- and four-player native Z80
+relay tests pass. Both network tests inject differing previous hit histories;
+state hashes agree during movement. Hardware speed improvement remains to
+be measured; emulator wall time is not a hardware crossing-time measurement.
+
+Delivered TAP: 52,381 bytes; game 41,016, bank 11,158, loader 100 bytes.
+Game allocation ends FDF8, leaving 519 bytes below FFFF. Tested stack watermark
+leaves at least 185 bytes above allocation in these two/four-player scenarios.
+The compatibility link `tests/link_alpha8_overlay128.py` requires the exact
+alpha 7 image checksums, assembles current routines with SjASMPlus, and retains
+existing entry addresses. Normal source builds include these changes directly.
+This delivery is locally assembled and tested; no new GitHub Actions run is
+claimed. Regression checks: `tests/test_alpha8_128.py`, and
+`ESP_HISTORY=1 ESP_WALK=1 python ports/esp01/tests/test_relay128.py`.

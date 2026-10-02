@@ -159,20 +159,36 @@ stream_recv_n:
     ld a,d
     or e
     jr z,stream_recv_done
-    ld b,e                  ; bridge limits max to 192
+    ld b,d
+    ld c,e                  ; bridge limits max to 192
     ld hl,(stream_tail)
     ld de,(es_dest)
-stream_copy:
-    ld a,(hl)
-    ld (de),a
-    inc de
-    inc hl
+    ld a,h
+    cp (stream_rx+4096)/256-1
+    jr nz,stream_contiguous
+    ld a,l
+    add a,c
+    jr nc,stream_contiguous
+    ; Split at the ring boundary; never invoke LDIR with a zero count.
+    push bc
+    ld a,l
+    neg
+    ld c,a
+    ldir
+    ld h,stream_rx/256
+    pop bc
+    ld a,(stream_tail)
+    add a,c
+    ld c,a
+    or a
+    jr z,stream_copied
+stream_contiguous:
+    ldir
     ld a,h
     cp (stream_rx+4096)/256
-    jr nz,stream_copy_next
+    jr nz,stream_copied
     ld h,stream_rx/256
-stream_copy_next:
-    djnz stream_copy
+stream_copied:
     ld (stream_tail),hl
 stream_recv_done:
     ld hl,(es_max)

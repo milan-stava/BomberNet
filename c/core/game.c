@@ -36,7 +36,11 @@ uint8_t hash_period;
 uint8_t replay_active;
 uint8_t replay_keys[MAX_PLAYERS];
 
-void rng_seed(uint16_t seed) { rand_seed = seed ? seed : 1; }
+/* Canonical inactive hit coordinates at match seeding (included in hashes). */
+void rng_seed(uint16_t seed) {
+  rand_seed = seed ? seed : 1;
+  hit_x = hit_y = 0;
+}
 
 /* hh = rotl16(hh) ^ byte + 9E37h per byte. The byte loop is assembly on the
  * Z80 (hash_run in the platform layer, over hash_ptr/hash_n): the C version at ~200 T
