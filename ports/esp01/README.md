@@ -3,14 +3,14 @@
 ESP-01 port for MB03+ and eLeMeNt, based on the UART services documented in
 WiFi BIOS 2.0 by Busy and Hood.
 The ordinary upstream ZX build keeps Spectranet. This port provides a
-separate **128K game alpha 6 (direct UART TCP stream)**, **48K game alpha 1**,
+separate **128K game alpha 7 (faster UART, frame work and lower footstep)**, **48K game alpha 1**,
 and the standalone TCP alpha 3 test.
 
 ## Download without installing a compiler
 
 On branch `esp01-mb-el`, open **Actions → ESP01 MB03+ and eLeMeNt**.
 For the complete 128K game, download `esp01-game-build` and extract
-`bombernet_esp01_128_alpha6.tap`. The separate `esp01-tcp-test` artifact
+`bombernet_esp01_128_alpha7.tap`. The separate `esp01-tcp-test` artifact
 contains the standalone `esp01_tcp_test.tap`. A green build verifies compilation and simulated UART
 tests, not real ESP hardware or gameplay.
 
@@ -353,3 +353,43 @@ source, with existing bank entry addresses preserved. The exact reproducible
 link is `tests/link_recovery_overlay128.py`; the ordinary source build includes
 the same recovery directly. The final TAP is retested for loader, raw UART
 recovery, WebSocket close, relay re-HOST and continuous walking.
+
+
+## 128K alpha 7: faster UART and frame work
+
+Load `bombernet_esp01_128_alpha7.tap` on both peers at 3.5 MHz. Hardware alpha 6
+feedback: approximately six seconds across the screen, already playable.
+Alpha 7 keeps the same transparent TCP setup/recovery and 60 ms simulation
+pacing; its hardware crossing time remains to be measured.
+
+The game-side send/receive bridge uses compact assembly and LDIR, retaining
+bank-0 caller-pointer safety, 192-byte chunks and complete stack restoration.
+Raw TX retains pointer and remaining length in registers inside each bounded
+32-attempt burst. RX retains ring head/count in registers while pumping. TX
+busy, RX overflow, ring-full and ten-second deadlines remain checked. The
+4096-byte ring now starts at the page-aligned address in allocated padding: a
+new full-ring test verifies that all 4096 bytes survive before any are drained.
+
+During a network playfield flush only the 40 HUD cells are cleared; the next
+fast compositor replaces all 960 playfield cells. Title/local paths retain full
+clearing. Pixel and shadow comparisons against alpha 6 pass. This saves about
+1.73 ms per flush. The common 16-frame map hash uses the exact original 25-row
+slices from a table; other periods and hash-boundary frames retain the general
+routine. Hash comparisons cover periods 1/2/7/16/32 and frame-number wrap.
+A regular slice falls from about 3.52 to 2.14 ms. The higher footstep (020Ah)
+uses AY period 81 instead of 65, lowering its frequency by about 20%; the
+other tested pitches are unchanged and sound remains nonblocking.
+
+In continuous walking, work between composition and frame synchronization
+is about 35 ms versus alpha 6's 41 ms, excluding the screen flush (now about
+16 ms versus 18 ms). Relay waits are included: this is an emulator comparison,
+not a promise of a four-second hardware crossing. Two- and four-player games
+and repeat HOST/READY pass without hash mismatches.
+
+The delivered TAP is 52,186 bytes: bank image 11,039, game image 40,940 and
+loader 100. Game allocation ends at 64940 (FDAC). The reproducible compatibility
+link is `tests/link_speed_overlay128.py`, starting from the delivered alpha 6
+images (CI run 36942743981 plus `link_recovery_overlay128.py`). It uses bridge
+space freed by assembly and appends only the 45-byte hash table to the game.
+Normal z88dk source builds include the changes directly. The 48K build is
+unchanged. Gameplay rules, BUILD_ID and relay protocol are unchanged.

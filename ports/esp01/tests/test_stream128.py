@@ -62,3 +62,21 @@ def inherited_stream():
     print('PASS: inherited transparent session escaped before AT setup without module reset')
 
 if __name__=='__main__':inherited_stream()
+
+
+def full_ring():
+    class Flood(UART):
+        def __init__(self): super().__init__(); self.payload=b''
+    u=Flood();z=BankZX(uart=u);z.poke(0xc100,b'host\0')
+    assert z.call('_tcp_open',0xc100,80)==0
+    data=bytes(range(256))*16;u.wire.extend(data)
+    for i in range(32): assert z.call('_tcp_send',0xc100,0)==0
+    got=bytearray()
+    for i in range(300):
+        n=z.call('_tcp_recv',0xc100,17);assert n!=65535;got+=z.read(0xc100,n)
+        if len(got)==len(data):break
+    assert got==data
+    z.call('_tcp_close')
+    print('PASS: full 4096-byte RX ring preserves exact binary payload')
+
+if __name__=='__main__':full_ring()
