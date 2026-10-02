@@ -346,3 +346,10 @@ repeat HOST. Simulation pacing and movement rules remain unchanged.
 Deathmatch keeps a killed player off screen until the next round. The stage
 reset test verifies that a dead player becomes visible again in that round;
 the reported intermittent disappearance has not otherwise been reproduced.
+
+The delivered TAP is 51,966 bytes. It uses the successful CI run 36942743981
+images plus a locally assembled 114-byte recovery function from the current
+source, with existing bank entry addresses preserved. The exact reproducible
+link is `tests/link_recovery_overlay128.py`; the ordinary source build includes
+the same recovery directly. The final TAP is retested for loader, raw UART
+recovery, WebSocket close, relay re-HOST and continuous walking.
