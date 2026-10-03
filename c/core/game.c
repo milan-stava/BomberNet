@@ -103,7 +103,8 @@ static void hash_records(void) {
 void hash_frame_step_general(void)
 #else
 void hash_frame_step(void)
-#endif {
+#endif
+{
   uint8_t k = frame_no % hash_period, r0, r1;
   if (hash_period < 2) { compute_state_hash(); return; }
   if (k == 0) {                       /* hash frame: records + accumulated map */

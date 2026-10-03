@@ -53,13 +53,8 @@ def rtt():
     print('PASS: measured announced delay 2..8 frames, slower connections retain margin')
 
 def hud():
-    z=BankZX();attrs=[4,6,7,1]
-    for count,widths in [(2,[9,10]),(3,[8,7,8]),(4,[8,7,8,7])]:
-        z.poke(S('_player_count'),[count]);z.poke(S('_title_mode'),[0]);z.poke(S('_net_active'),[1])
-        z.call('_clear_buffers');z.poke(S('_draw_buf')+960,bytes([0x92,0xae])+b' '*38)
-        z.call('_flush_screen');got=z.read(0x5ae1,sum(widths));wanted=b''.join(bytes([attrs[i]|(z.read8(S('_zx_bar_attr'))&0xf8)])*w for i,w in enumerate(widths))
-        assert got==wanted,(count,got.hex(),wanted.hex())
-    print('PASS: full multiplayer HUD segments use their player ink, preserving bar paper')
+    from test_alpha12_128 import hud as current_hud
+    current_hud()
 
 if __name__=='__main__':parser();audio();rtt();hud()
 

@@ -994,43 +994,63 @@ fz_hud_colors:
     ld a,(_player_count)
     cp 2
     ret c
-    ld hl,0x5ae1
-    ld de,_player_attrs
     ld c,a
-    ld b,9
-    cp 2
-    jr z,h9_first
-    ld b,8
-h9_first:
-    call h9_run
-    inc de
-    ld b,10
+    ld hl,0x5ae1
+    ld b,30
+    ld a,0x47
+h12_white:
+    ld (hl),a
+    inc hl
+    djnz h12_white
+    ld hl,0x5ae1
+    ld a,0x44
+    ld (hl),a
+    inc hl
+    ld (hl),a
     ld a,c
     cp 2
-    jp z,h9_run
-    ld b,7
-    call h9_run
-    inc de
-    ld b,8
-    call h9_run
+    jr nz,h12_compact
+    ld hl,0x5aea
+    ld a,0x46
+    ld (hl),a
+    inc hl
+    ld (hl),a
+    inc hl
+    ld (hl),a
+    ld hl,0x5ae8
+    ld a,0x44
+    ld (hl),a
+    inc hl
+    ld (hl),a
+    ld hl,0x5af2
+    ld (hl),a
+    inc hl
+    ld (hl),a
+    ld hl,0x5af9
+    ld a,0x42
+    ld (hl),a
+    inc hl
+    ld (hl),a
+    ret
+h12_compact:
+    ld hl,0x5ae8
+    ld a,0x46
+    ld (hl),a
+    inc hl
+    ld (hl),a
+    ld hl,0x5af0
+    ld a,0x47
+    ld (hl),a
+    inc hl
+    ld (hl),a
     ld a,c
     cp 4
     ret nz
-    inc de
-    ld b,7
-h9_run:
-    ld a,(_zx_bar_attr)
-    and 0xf8
-    push bc
-    ld b,a
-    ld a,(de)
-    and 7
-    or b
-    pop bc
-h9_fill:
+    ld hl,0x5af7
+    ld a,0x41
     ld (hl),a
     inc hl
-    djnz h9_fill
+    ld (hl),a
     ret
 
 fz_bar:  defb 0

@@ -3,7 +3,7 @@
 One-way delay includes ESP packetization/network time. UART TX and RX are each
 serialized at 115200 baud, 8N1. No dependence on wall-clock server scheduling.
 """
-import collections,json,struct
+import collections,json,struct,os
 from test_bank128 import S
 from zxemu import sym_from_map
 class TimedLink:
@@ -57,6 +57,8 @@ class TimedLink:
   if msg['op']!='input':return
   self.log.append((i,msg['frame'],self.now(i)))
   msg=dict(op='input',frame=msg['frame'],slot=i,data=msg['data'])
+  if os.environ.get('ESP_JSON_REORDER')=='1':
+   msg=dict(op='input',frame=msg['frame'],data=msg['data'],slot=i)
   payload=json.dumps(msg,separators=(',',':')).encode()
   wire=bytes([129,len(payload)])+payload if len(payload)<126 else bytes([129,126])+struct.pack('>H',len(payload))+payload
   peer=1-i;due=max(self.busy[i]+self.delay,self.last_rx[peer])

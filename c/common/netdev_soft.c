@@ -260,25 +260,17 @@ static uint8_t fnum(void) {                /* next unsigned number after fp -> f
 
 /* {"op":"input","frame":F,"slot":S,"data":"hex"} (both relays keep this
  * order; spaces allowed). 1 = handled, 0 = let the generic parser try. */
+/* JSON object key order is not part of the wire protocol. */
 static uint8_t fast_input(const char *l) {
-  uint16_t frame;
-  uint8_t slot, i, *d, hi;
-  fp = l;
-  while (*fp && *fp != ':') fp++;           /* after "op" */
-  while (*fp == ':' || *fp == ' ' || *fp == '"') fp++;
-  if (*fp != 'i') return 0;
-  if (!fnum()) return 0;
-  frame = fv;
-  if (!fnum() || fv >= NET_SLOTS) return 0;
-  slot = (uint8_t)fv;
-  while (*fp && *fp != ':') fp++;           /* "data" */
-  while (*fp == ':' || *fp == ' ' || *fp == '"') fp++;
-  if (frame < s_base || frame - s_base >= WIN) return 1;
-  i = (uint8_t)frame & (WIN - 1);
-  d = data[i][slot];
-  for (hi = 0; hi < NET_BYTES && fp[0] && fp[1] && fp[0] != '"'; hi++, fp += 2)
-    d[hi] = (uint8_t)((hexval(fp[0]) << 4) | hexval(fp[1]));
-  have[i] |= (uint8_t)(1 << slot);
+  char op[10], hex[NET_BYTES * 2 + 1];
+  uint16_t frame, slot;
+  if (!jstr(l, "\"op\"", op, sizeof(op)) || strcmp(op, "input")) return 0;
+  if (!jfind(l, "\"frame\"") || !jfind(l, "\"slot\"") ||
+      !jstr(l, "\"data\"", hex, sizeof(hex))) return 0;
+  frame = jint(l, "\"frame\"", 0);
+  slot = jint(l, "\"slot\"", 0xffff);
+  if (slot >= NET_SLOTS) return 0;
+  store_input(frame, (uint8_t)slot, hex);
   return 1;
 }
 
@@ -302,6 +294,66 @@ const uint8_t *fi_keys;
 
 static uint8_t fast_input(const char *l) __z88dk_fastcall __naked {
   __asm                     ; HL = the line (nothing may come before the assembly)
+    push hl
+    ld de,g12_prefix
+    call g12_match
+    jr c,g12_fallback
+    call g12_number
+    jr c,g12_fallback
+    ld de,g12_slot
+    call g12_match
+    jr c,g12_fallback
+    call g12_number
+    jr c,g12_fallback
+    ld de,g12_data
+    call g12_match
+    jr c,g12_fallback
+    pop hl
+    jr g12_fast
+g12_fallback:
+    pop hl
+    ld hl,0
+    ret
+g12_number:
+    ld a,(hl)
+    cp ' '
+    jr nz,g12_num_first
+    inc hl
+    jr g12_number
+g12_num_first:
+    sub '0'
+    cp 10
+    ccf
+    ret c
+g12_num_loop:
+    inc hl
+    ld a,(hl)
+    sub '0'
+    cp 10
+    jr c,g12_num_loop
+    or a
+    ret
+g12_match:
+    ld a,(de)
+    or a
+    ret z
+    ld a,(hl)
+    cp ' '
+    jr nz,g12_compare
+    inc hl
+    jr g12_match
+g12_compare:
+    ld a,(de)
+    cp (hl)
+    scf
+    ret nz
+    inc de
+    inc hl
+    jr g12_match
+g12_prefix: defb '{',34,'op',34,':',34,'input',34,',',34,'frame',34,':',0
+g12_slot: defb ',',34,'slot',34,':',0
+g12_data: defb ',',34,'data',34,':',34,0
+g12_fast:
 fi_c1:
     ld   a,(hl)             ; to the colon after op
     or   a

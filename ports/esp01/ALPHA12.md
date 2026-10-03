@@ -1,0 +1,11 @@
+# ESP01 MB/EL alpha12 (128K)
+
+Download `runable/12Bomberman.tap` (52512 bytes); BASIC header `12Bomberma`.
+
+Fix a reproduced input-parser corruption: the assembly fast path assumed JSON fields were ordered op/frame/slot/data. With op/frame/data/slot and zero input, it recorded an incorrect key into slot 0 and marked slot 0 instead of slot 1. A compact structural guard preserves the canonical assembly path; other valid JSON layouts use the existing named-field parser. Host C fast_input now reads fields by name too. State-hash/desync checking remains enabled. This fixes a demonstrated divergence mechanism; hardware reports should confirm whether any other DESYNC cause remains.
+
+Multiplayer HUD uses black paper, white scores and shared status text, full green P1 and yellow P2 labels, green life icons and red enemy icon. Spectrum 8-pixel attribute cells mean label colors cover complete cells rather than MZ's individual six-pixel glyphs. Three/four-player compact labels retain player colors. Single-player bar is unchanged. AY and alpha11 input-delay selection are unchanged; no new speed optimization.
+
+Validation: 5376 native Z80 parser layouts (all field permutations, every slot, zero/directional/bomb/arbitrary inputs, window indices and whitespace); HUD 2/3/4-player attributes; native alpha11 equivalence, alpha9 parser/RTT, alpha10 AY/timing, bank/loader, compositor/hash and UART/stream tests passed. Two emulated machines through local relay plus deterministic 115200-baud UART and 40ms one-way delay, with op/frame/data/slot ordering: 90 game frames each, five matching hash checkpoints, abort 0/0. Independent ordinary C engine comparison: 540 frames in cooperative/deathmatch across three seeds; player/map/state hashes matched native game.
+
+TAP uses SjASMPlus overlay of exact alpha11 binaries; full z88dk rebuild not run. Mirrored C changes compile in host configuration; corrected an existing #endif/open-brace source integration error in game.c. Overlay reproduction: unzip ports/esp01/tests/alpha11-reference.zip at repository root; run python ports/esp01/tests/link_alpha12_overlay128.py /path/to/sjasmplus; python ports/esp01/pack_game128.py. Bank and loader lengths are unchanged.
