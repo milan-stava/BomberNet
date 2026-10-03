@@ -196,7 +196,7 @@ static uint8_t last_tick;
 extern void net_background(void);
 #endif
 #ifdef ESP_FAST128
-static uint8_t ay_active, ay_start, ay_ticks;
+static uint8_t ay_active;
 static void zx_ay(uint16_t rv) __z88dk_fastcall __naked {
   __asm
     ld e,h
@@ -209,26 +209,49 @@ static void zx_ay(uint16_t rv) __z88dk_fastcall __naked {
   __endasm;
 }
 static void ay_tone(uint16_t ratio,uint8_t len) __naked {
-  __asm
+ __asm
     pop af
     pop de
     pop hl
     push hl
     push de
     push af
+    ld a,(_ay_active)
+    or a
+    jr nz,a9_ready
+    push hl
+    push de
+    ld hl,8
+    call _zx_ay
+    ld hl,9
+    call _zx_ay
+    ld hl,10
+    call _zx_ay
+    pop de
+    pop hl
+a9_ready:
     ld a,1
     ld (_ay_active),a
-    ; One-shot AY decay; six periods ~= 13.85 ms (beeper footstep 13-14 ms).
+    ld b,0
+    ld a,e
+    cp 14
+    jr z,a9_channel
+    ld b,2
+    cp 12
+    jr z,a9_channel
+    ld b,4
+a9_channel:
+    push bc
     ld a,e
     cp 32
     ld a,6
-    jr c,ay_env_ready
+    jr c,a9_env
     ld a,e
     cp 48
     ld a,13
-    jr c,ay_env_ready
+    jr c,a9_env
     ld a,20
-ay_env_ready:
+a9_env:
     push af
     ld c,l
     ld a,h
@@ -236,29 +259,41 @@ ay_env_ready:
     add a,a
     ld e,a
     ld d,0
-    ld hl,ay_periods
+    ld hl,a9_periods
     add hl,de
     ld e,(hl)
     inc hl
     ld d,(hl)
     ex de,hl
     ld a,c
-    cp 0x32
-    jp nz,ay_pitch_ready
+    cp 50
+    jr nz,a9_pitch
     ld de,5
     add hl,de
-ay_pitch_ready:
+a9_pitch:
+    pop af
+    pop bc
+    push af
     ld d,h
     ld h,l
-    ld l,0
+    ld l,b
+    push bc
     call _zx_ay
+    pop bc
     ld h,d
-    ld l,1
+    ld a,b
+    inc a
+    ld l,a
+    push bc
     call _zx_ay
-ay_registers:
-    ld hl,0x3e07
+    pop bc
+    ld a,b
+    rrca
+    add a,8
+    ld l,a
+    ld h,16
     call _zx_ay
-    ld hl,0x1008
+    ld hl,0x3807
     call _zx_ay
     pop af
     ld h,a
@@ -268,13 +303,13 @@ ay_registers:
     call _zx_ay
     ld hl,0x090d
     jp _zx_ay
-ay_periods:
+a9_periods:
     defw 6,27,52,78,103,129,154,180,205,231,256,283,307,334,358,385
-  __endasm;
+ __endasm;
 }
 static void ay_update(void) {
-  if (ay_active && !net_active) {
-    zx_ay(8); ay_active=0;
+  if (ay_active) {
+    zx_ay(8); zx_ay(9); zx_ay(10); ay_active=0;
   }
 }
 #endif
@@ -546,6 +581,7 @@ fz_clr:
     djnz fz_clr
     ld   sp,(fz_sp)
     ei
+    call fz_hud_colors
     pop  ix
     ret
 
@@ -893,6 +929,55 @@ fz_gen:  defb 0
 #endif
 fz_ent:  defw 0
 fz_g3:   defb 0
+fz_hud_colors:
+    ld a,(fz_bar)
+    or a
+    ret z
+    ld a,(_title_mode)
+    or a
+    ret nz
+    ld a,(_player_count)
+    cp 2
+    ret c
+    ld hl,0x5ae1
+    ld de,_player_attrs
+    ld c,a
+    ld b,9
+    cp 2
+    jr z,h9_first
+    ld b,8
+h9_first:
+    call h9_run
+    inc de
+    ld b,10
+    ld a,c
+    cp 2
+    jp z,h9_run
+    ld b,7
+    call h9_run
+    inc de
+    ld b,8
+    call h9_run
+    ld a,c
+    cp 4
+    ret nz
+    inc de
+    ld b,7
+h9_run:
+    ld a,(_zx_bar_attr)
+    and 0xf8
+    push bc
+    ld b,a
+    ld a,(de)
+    and 7
+    or b
+    pop bc
+h9_fill:
+    ld (hl),a
+    inc hl
+    djnz h9_fill
+    ret
+
 fz_bar:  defb 0
 fz_row23: defb 0
 fz_info: defs 8

@@ -60,7 +60,8 @@ def sound_and_reset():
     regs=dict(zip([v for p,v in uart.ay if p==0xfffd],[v for p,v in uart.ay if p==0xbffd]))
     assert regs[0]+256*regs[1]==78 and regs[8]==16 and regs[11]==6 and regs[12]==0 and regs[13]==9,regs
     z.poke(S('_net_active'),[0]);z.call('_plat_frame_sync')
-    assert uart.ay[-2:]==[(0xfffd,8),(0xbffd,0)]
+    regs=dict(zip([v for p,v in uart.ay if p==0xfffd],[v for p,v in uart.ay if p==0xbffd]))
+    assert all(regs[r]==0 for r in (8,9,10))
     # Stage reset is the deathmatch respawn boundary, not every death.
     z.call('_players_setup',2);z.poke(S('_game_mode'),[1])
     p=S('_players');z.poke(p+3,[10,10,13]);z.poke(p+8,[1])

@@ -1,0 +1,977 @@
+/*
+ * BOMBER - main flow: title screen, stage life cycle, HUD, frame loop.
+ * Frame order is the same as the original main loop (1275h) because the
+ * collision rules depend on what is already in the draw buffer.
+ */
+#include <stdint.h>
+#include "game.h"
+#include "data.h"
+#include <string.h>
+#ifdef HOST
+#include <stdio.h>
+#include <stdlib.h>
+#endif
+
+/* per stage: enemy count, enemy behaviour-cycle period; stage 5+ uses the last row */
+static const uint8_t stage_table[5][2] = {
+  {1, 0x10}, {2, 0x15}, {3, 0x1a}, {4, 0x1f}, {4, 0x24},
+};
+
+static void load_stage_params(void) {
+  uint8_t s = stage < 6 ? stage : 5;
+  enemies_left = stage_table[s - 1][0];
+  enemy_period = stage_table[s - 1][1];
+  if (game_mode == GAME_DM) enemies_left = 0;   /* arena: no monsters */
+}
+
+/* ---- HUD (row 24) ---- */
+/* 3-4 players: "n ddddd<man>c " per player (10 chars), time only with 3 */
+static void draw_hud_compact(void) {
+  uint8_t *p = draw_at(0, HUD_ROW);
+  uint8_t i;
+  for (i = 0; i < player_count; i++) {
+    player_t *pl = &players[i];
+    if (pl->score > hi_score) hi_score = pl->score;
+    p[0] = C_PLAYER_DIGIT(i);
+    print_num4(p + 2, pl->score);
+    p[7] = C_LIVES_ICON; p[8] = (game_mode == GAME_DM) ? pl->wins : pl->lives;
+    p += 10;
+  }
+  if (player_count < 4) {
+    p[0] = C_HUD_T;
+    print_num5(p + 1, time_left);
+    p[6] = C_SPACE;
+    p[7] = C_ENEMY_ICON; p[8] = enemies_left;
+  }
+}
+
+/* multiplayer HUD: "P1 000000 <man>3  P2 000000 <man>3  T0970 <enemy>1 S01" */
+static void draw_hud_multi(void) {
+  uint8_t *p = draw_at(0, HUD_ROW);
+  uint8_t i;
+  if (player_count > 2) { draw_hud_compact(); return; }
+  for (i = 0; i < player_count; i++) {
+    player_t *pl = &players[i];
+    if (pl->score > hi_score) hi_score = pl->score;
+    p[0] = C_HUD_P; p[1] = C_PLAYER_DIGIT(i);
+    print_num5(p + 3, pl->score);
+    p[10] = C_LIVES_ICON; p[11] = (game_mode == GAME_DM) ? pl->wins : pl->lives;
+    p += 13;
+  }
+  p[0] = C_HUD_T;
+  print_num5(p + 1, time_left);
+  p[6] = C_SPACE;                     /* drop the fixed trailing 0 */
+  p[7] = C_ENEMY_ICON; p[8] = enemies_left;
+  p[10] = C_HUD_S; print_num2(p + 11, stage);
+}
+
+static void draw_hud(void) {
+  uint8_t *p = draw_at(0, HUD_ROW);
+  uint16_t score = players[0].score;
+  if (player_count > 1) { draw_hud_multi(); return; }
+  print_string(p, str_hud_score);
+  print_string(p + 13, str_hud_bonus);
+  print_string(p + 33, str_hud_stage);
+  print_num2(p + 37, stage);
+  if (score > hi_score) hi_score = score;
+  print_num5(p + 6, score);
+  print_num5(p + 19, time_left);
+  p[24] = C_SPACE;                    /* blank the fixed 6th digit of the time */
+}
+
+static void draw_hud_icons(void) {
+  uint8_t *p = draw_at(25, HUD_ROW);
+  if (player_count > 1) return;
+  p[0] = C_LIVES_ICON; p[1] = C_COLON; p[2] = players[0].lives;
+  p[4] = C_ENEMY_ICON; p[5] = C_COLON; p[6] = enemies_left;   /* columns 29-31: a blank before STG */
+}
+
+/* Every 20 frames: time -= 10. At zero the bricks and items vanish. */
+static void time_tick(void) {
+  if (tmr_time.counter != 0) return;
+  if (time_left) { time_left -= 10; return; }
+  if (timeout_flag) return;
+  clear_map();
+  map_walls();
+  timeout_flag = 1;
+  exit_present = 0;
+  bonus_present = 0;
+  bonus_revealed = 1;
+  exit_revealed = 1;
+  bonus_y = 0;
+  exit_x = 0;
+}
+
+/* ---- frames ---- */
+static void frame_common(void) {
+  tick_timers();                      /* also presents the previous frame */
+  draw_hud();
+  draw_hud_icons();
+#ifdef ESP_FAST128
+  composite_frame();
+#else
+  composite_map();
+#endif
+}
+
+static void frame(void) {
+  frame_common();
+  input_poll();
+  update_bombs();
+  draw_bombs();
+  place_bombs();
+  players_anim_step();
+  enemy_ai();
+  draw_bonus();
+  draw_exit();
+  draw_enemies();
+  reveal_bonus();
+  reveal_exit();
+  draw_players();
+  spawn_from_hit();
+  check_pickups();
+  time_tick();
+  frame_no++;
+  if (hash_period) {
+    hash_frame_step();
+    if (net_active && (frame_no % hash_period) == 0) net_hash(frame_no, state_hash);
+  }
+}
+
+/* animations only: no input, no AI */
+static void frame_no_input(void) {
+  frame_common();
+  draw_bombs();
+  draw_bonus();
+  draw_exit();
+  draw_enemies();
+  draw_players();
+  update_bombs();
+}
+
+static void frame_minimal(void) {
+  frame_common();
+  draw_bonus();
+  draw_exit();
+  draw_players();
+}
+
+static void idle_frames(uint8_t n) {
+  while (n--) frame_no_input();
+}
+
+/* The title has a blank row under the logo; a machine with 24 text rows
+ * does without it, and everything below moves up by one. */
+#define TITLE_UP (SCREEN_H - PLAT_ROWS)
+#define TR(r) ((r) - TITLE_UP)
+
+/* ---- title screen ---- */
+static void title_init(void) {
+  uint8_t i;
+  static const uint8_t demo_x[4] = {0x0b, 0x13, 0x1a, 0x22};
+  title_mode = 1;
+  clear_buffers();
+  clear_enemies();
+  for (i = 0; i < 4; i++) {
+    enemies[i].state = ENEMY_ALIVE;
+    enemies[i].x = demo_x[i];
+    enemies[i].y = TR(7);
+    enemies[i].type = i;
+  }
+  clear_bombs();
+}
+
+/* ---- title menu: UP/DOWN pick a row, LEFT/RIGHT change its value ----
+ * rows: MODE, PLAYERS, JOYSTICK, then one input row per player */
+static uint8_t menu_item, menu_prev_keys, menu_locked, lobby_keys;   /* locked: lobby owns the keys */
+static const char *const mode_names[2] = {"COOP      ", "DEATHMATCH"};
+
+/* with two keyboard players, player A fires with CR (SPACE is next to WASD);
+ * applied when the game starts, the title itself always listens to SPACE */
+static uint8_t menu_fire_cr;
+/* players whose keys are read on this machine: all of them locally, the
+ * LOCAL row's count in a network game */
+static uint8_t local_count(void) { return menu_net != NET_OFF ? menu_local : menu_players; }
+static void update_fire_key(void) {
+  uint8_t i;
+  menu_fire_cr = 0;
+  for (i = 0; i < local_count(); i++)
+    if (menu_inputs[i] == INPUT_KBD_B) menu_fire_cr = 1;
+}
+
+#define input_allowed(in) plat_input_allowed(in)
+
+static uint8_t input_used(uint8_t in, uint8_t except) {
+  uint8_t i;
+  for (i = 0; i < local_count(); i++)
+    if (i != except && menu_inputs[i] == in) return 1;
+  return 0;
+}
+
+/* next allowed and unused input for player i in direction dir */
+static void input_cycle(uint8_t i, int8_t dir) {
+  uint8_t in = menu_inputs[i], n;
+  for (n = 0; n < 4; n++) {
+    in = (uint8_t)((in - 1 + 4 + dir) % 4 + 1);      /* 1..4 */
+    if (input_allowed(in) && !input_used(in, i)) { menu_inputs[i] = in; return; }
+  }
+}
+
+/* keep the assignment valid after MODE/PLAYERS/JOYSTICK changes */
+static void menu_validate(void) {
+  uint8_t i, maxp = 0;
+  for (i = INPUT_KBD_A; i <= INPUT_JOY2; i++)        /* as many local players as usable inputs */
+    if (input_allowed(i)) maxp++;
+  if (menu_mode == GAME_DM && menu_players < 2) menu_players = 2;
+  if (menu_net != NET_OFF) {
+    if (menu_players < 2) menu_players = 2;               /* the room needs someone to join */
+    if (menu_players > 4) menu_players = 4;
+    if (menu_local > 3) menu_local = 3;                   /* menu rows: 4 fixed + LOCAL + 3 */
+    if (menu_local > maxp) menu_local = maxp;
+    if (menu_net == NET_HOST && menu_local > menu_players) menu_local = menu_players;
+    if (menu_local < 1) menu_local = 1;
+  } else if (menu_players > maxp) menu_players = maxp;
+  for (i = 0; i < local_count(); i++)
+    if (!input_allowed(menu_inputs[i]) || input_used(menu_inputs[i], i)) input_cycle(i, 1);
+  update_fire_key();
+}
+
+static const char *const net_names[3] = {"OFF   ", "HOST  ", "JOIN  "};
+#define MENU_FIXED 4        /* MODE, NETWORK, PLAYERS, JOYSTICK */
+#define MENU_PLAYER_ROWS (menu_net != NET_OFF ? 1 + menu_local : menu_players)   /* LOCAL row + its players */
+
+/* rows: MODE, NETWORK (only with a NET device), PLAYERS, JOYSTICK, then
+ * LOCAL (network game) and one input row per (local) player */
+static void menu_change(int8_t dir) {
+  switch (menu_item) {
+  case 0: menu_mode ^= 1; break;
+  case 1:                                                    /* greyed out without a NET device */
+    if (net_device == NETDEV_NET) { menu_net = (uint8_t)((menu_net + 3 + dir) % 3); if (menu_net && menu_players < 2) menu_players = 2; }
+    break;
+  case 2:
+    if (dir > 0 && menu_players < 4) menu_players++;
+    if (dir < 0 && menu_players > 1) menu_players--;
+    break;
+  case 3:                                                    /* LOCAL (network game) or JOYSTICK */
+    if (menu_net != NET_OFF) {
+      if (dir > 0 && menu_local < 3) menu_local++;
+      if (dir < 0 && menu_local > 1) menu_local--;
+    } else joy_type = (uint8_t)((joy_type + PLAT_JOY_TYPES + dir) % PLAT_JOY_TYPES);
+    break;
+  case 4:
+    if (menu_net != NET_OFF) { joy_type = (uint8_t)((joy_type + PLAT_JOY_TYPES + dir) % PLAT_JOY_TYPES); break; }
+    /* fall through: a player row */
+  default: input_cycle(menu_item - MENU_FIXED - (menu_net != NET_OFF), dir); break;
+  }
+  menu_validate();
+}
+
+#define MENU_X 3
+#define MENU_W 34
+#define MENU_Y TR(10)
+#define MENU_H 10           /* frame rows 10..19: up to 4 fixed rows + 4 player rows */
+
+static void draw_title_box(void) {
+  uint8_t r;
+  uint8_t *p = draw_at(MENU_X, MENU_Y);
+  for (r = 0; r < MENU_H; r++, p += SCREEN_W) {       /* block fills: this runs every title frame */
+    if (r == 0 || r == MENU_H - 1) { memset(p, T_BOX_H, MENU_W); continue; }
+    memset(p + 1, C_SPACE, MENU_W - 2);
+    p[0] = T_BOX_V; p[MENU_W - 1] = T_BOX_V;
+  }
+  *draw_at(MENU_X, MENU_Y) = T_BOX_TL;
+  *draw_at(MENU_X + MENU_W - 1, MENU_Y) = T_BOX_TR;
+  *draw_at(MENU_X, MENU_Y + MENU_H - 1) = T_BOX_BL;
+  *draw_at(MENU_X + MENU_W - 1, MENU_Y + MENU_H - 1) = T_BOX_BR;
+}
+
+static uint8_t title_ticks;
+
+static void menu_row(uint8_t row, const char *label, uint8_t digit, const char *value, uint8_t selected) {
+  uint8_t *p = draw_at(MENU_X + 2, MENU_Y + 1 + row);
+  p[0] = selected ? T_ARR_RIGHT : C_SPACE;
+  title_text(p + 2, label);
+  if (digit) p[2 + 7] = digit;
+  if (selected) title_text_hl(p + 13, value); else title_text(p + 13, value);
+}
+
+/* a row that cannot be chosen (the cursor skips it) */
+static void menu_row_dim(uint8_t row, const char *label, const char *value) {
+  uint8_t *p = draw_at(MENU_X + 2, MENU_Y + 1 + row);
+  p[0] = C_SPACE;
+  title_text_dim(p + 2, label);
+  title_text_dim(p + 13, value);
+}
+
+static void title_menu(void) {
+  uint8_t k = menu_locked ? lobby_keys : plat_keys_a(), i, rows, row, *p;
+  uint8_t edge = k & ~menu_prev_keys;
+  char num[2];
+  menu_prev_keys = k;
+  rows = MENU_FIXED + MENU_PLAYER_ROWS;
+  if (menu_locked) edge = 0;
+  if ((edge & KEY_UP) && menu_item > 0) {
+    menu_item--;
+    if (menu_item == 1 && net_device != NETDEV_NET) menu_item = 0;     /* skip the greyed NETWORK row */
+    plat_tone(0x020a, 14);
+  }
+  if ((edge & KEY_DOWN) && menu_item < rows - 1) {
+    menu_item++;
+    if (menu_item == 1 && net_device != NETDEV_NET) menu_item = 2;
+    plat_tone(0x020a, 14);
+  }
+  if (edge & KEY_LEFT) { menu_change(-1); plat_tone(0x030a, 14); }
+  if (edge & KEY_RIGHT) { menu_change(1); plat_tone(0x030a, 14); }
+  if (menu_item >= rows) menu_item = rows - 1;
+  if (menu_item == 1 && net_device != NETDEV_NET) menu_item = 2;
+
+  draw_title_box();
+  menu_row(0, "MODE", 0, mode_names[menu_mode], menu_item == 0);
+  if (net_device == NETDEV_NET) menu_row(1, "NETWORK", 0, net_names[menu_net], menu_item == 1);
+  else menu_row_dim(1, "NETWORK", "NONE");
+  row = 2;
+  num[0] = '0' + menu_players; num[1] = 0;
+  menu_row(row, "PLAYERS", 0, num, menu_item == row); row++;
+  if (menu_net != NET_OFF) {                /* LOCAL n (players at this machine) */
+    num[0] = '0' + menu_local;
+    menu_row(row, "LOCAL", 0, num, menu_item == row);
+    row++;
+  }
+  menu_row(row, "JOYSTICK", 0, plat_joy_names[joy_type], menu_item == row); row++;
+  for (i = 0; i < local_count(); i++)
+    menu_row(row + i, "PLAYER", C_PLAYER_DIGIT(i),
+             (menu_inputs[i] == INPUT_KBD_A && menu_fire_cr) ? plat_kbd_a_alt_name : plat_input_name(menu_inputs[i]),
+             menu_item == row + i);
+
+  p = draw_at(3, TR(20));
+  p[0] = T_ARR_UP; p[1] = T_ARR_DOWN; title_text(p + 3, "SELECT");
+  p[11] = T_ARR_LEFT; p[12] = T_ARR_RIGHT; title_text(p + 14, "CHANGE");
+  title_text(draw_at(5, TR(21)), "HI-SCORE");
+  print_num5(draw_at(14, TR(21)), hi_score);
+  title_text(draw_at(22, TR(21)), "SCORE");
+  print_num5(draw_at(28, TR(21)), players[0].score);
+  title_ticks++;
+  if (title_ticks & 0x10) title_text_hl(draw_at(8, TR(22)), "PUSH SPACE TO START GAME");
+  p = draw_at(2, TR(23));
+  title_text(p, "COPYRIGHT  C  2026  MZPICO");
+  p[10] = 0x17; p[12] = 0x18;               /* the original's "(" ")" glyphs */
+  {                                         /* version at the right end of the line */
+    const char *v = GAME_VERSION;
+    p = draw_at(38 - (uint8_t)strlen(v) - 1, TR(23));
+    *p++ = 'V';
+    while (*v) { *p++ = *v == '.' ? 0x19 : (uint8_t)(*v - '0'); v++; }   /* 19h = '.' in the title table */
+  }
+}
+
+static void title_frame(void);
+
+/* ---- network lobby (title mode) ---- */
+
+/* three centred lines in the menu frame area, drawn over the title */
+static char lobby_extra[32];        /* optional 4th lobby row (link state); "" = none */
+
+static void lobby_box(const char *l1, const char *l2, const char *l3) {
+  uint8_t r;
+  draw_title_box();
+  for (r = 1; r < MENU_H - 1; r++) memset(draw_at(MENU_X + 1, MENU_Y + r), C_SPACE, MENU_W - 2);
+  title_text(draw_at(MENU_X + (MENU_W - (uint8_t)strlen(l1)) / 2, MENU_Y + 2), l1);
+  title_text_hl(draw_at(MENU_X + (MENU_W - (uint8_t)strlen(l2)) / 2, MENU_Y + 4), l2);
+  if (lobby_extra[0]) {               /* lobby: link state on its own row, hint one lower */
+    title_text(draw_at(MENU_X + (MENU_W - (uint8_t)strlen(lobby_extra)) / 2, MENU_Y + 5), lobby_extra);
+    title_text(draw_at(MENU_X + (MENU_W - (uint8_t)strlen(l3)) / 2, MENU_Y + 7), l3);
+  } else {
+    title_text(draw_at(MENU_X + (MENU_W - (uint8_t)strlen(l3)) / 2, MENU_Y + 6), l3);
+  }
+}
+
+/* title frame with a lobby overlay; returns the new key edges */
+static uint8_t lobby_frame(const char *l1, const char *l2, const char *l3) {
+  uint8_t k, edge;
+  k = plat_keys_a();
+  edge = k & ~menu_prev_keys;         /* before title_menu records this frame's keys */
+  lobby_keys = k;
+  menu_locked = 1;
+  title_frame();
+  menu_locked = 0;
+  lobby_box(l1, l2, l3);
+  return edge;
+}
+
+static void lobby_error(uint8_t r) {
+  char line[24];
+  uint8_t n;
+  strcpy(line, r == 6 ? "BUILD MISMATCH" : r == 7 ? "ROOM NOT FOUND" : r == 9 ? "NO CONNECTION" : "NETWORK ERROR 00");
+  if (line[14] == '0') { line[14] = '0' + r / 10; line[15] = '0' + r % 10; }
+  for (n = 0; n < 60; n++) lobby_frame(line, "", "");
+}
+
+static const char code_alphabet[] = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+
+/* code entry: UP/DOWN letter, LEFT/RIGHT position, SPACE join; returns 0 = cancelled */
+/* Room code: type the letters (the cursor advances), or step through the
+ * alphabet with UP/DOWN and move with LEFT/RIGHT. DEL steps back. */
+static uint8_t lobby_enter_code(void) {
+  uint8_t pos = 0, idx[4], i, edge, key, last_key = 0xff;
+  char line[16];
+  for (i = 0; i < 4; i++) {
+    const char *q = strchr(code_alphabet, net_code[i]);
+    idx[i] = q ? (uint8_t)(q - code_alphabet) : 0;
+  }
+  for (;;) {
+    for (i = 0; i < 4; i++) { line[i * 2] = code_alphabet[idx[i]]; line[i * 2 + 1] = ' '; }
+    line[7] = 0;
+    edge = lobby_frame("TYPE THE ROOM CODE", line, "SPACE JOIN  BREAK CANCEL");
+    *draw_at(MENU_X + (MENU_W - 7) / 2 + pos * 2, MENU_Y + 5) = T_ARR_UP;
+    if (edge & KEY_UP) { idx[pos] = (uint8_t)((idx[pos] + 1) % 24); plat_tone(0x030a, 14); }
+    if (edge & KEY_DOWN) { idx[pos] = (uint8_t)((idx[pos] + 23) % 24); plat_tone(0x030a, 14); }
+    if ((edge & KEY_RIGHT) && pos < 3) pos++;
+    if ((edge & KEY_LEFT) && pos > 0) pos--;
+    key = plat_key_char();
+    if (key != last_key) {
+      last_key = key;
+      if (key == 0x1b) return 0;
+      if (key == 8) { if (pos > 0) pos--; }
+      else if (key) {
+        const char *q = strchr(code_alphabet, key);
+        if (q) {
+          idx[pos] = (uint8_t)(q - code_alphabet);
+          if (pos < 3) pos++;
+          plat_tone(0x030a, 14);
+        } else {
+          plat_tone(0x0a0a, 14);          /* I and O are not used in codes */
+        }
+      }
+    }
+    if (edge & KEY_SPACE) {
+      for (i = 0; i < 4; i++) net_code[i] = code_alphabet[idx[i]];
+      net_code[4] = 0;
+      return 1;
+    }
+  }
+}
+
+/* Lobby messages (NETMSG, byte 0 = kind).
+ *  - The host pings every 10 frames, joiners echo, and the longest round
+ *    trip of the last four, in frames, sets the input delay: ceil(rtt / 2),
+ *    clamped. In a match each side's input has d frames to reach the other,
+ *    so the two directions have 2d frames together; a lobby sample already
+ *    counts up to a frame of polling at either end, which is the margin
+ *    (measurements: docs/net-timing.md).
+ *  - Every joiner says HELLO with its local player count (on entry and every
+ *    50 frames); the host seats players in slot order (its own first) and
+ *    announces the TABLE (total, seats, one byte per player: slot * 4 +
+ *    local index) whenever it changes and right before it readies up.
+ *  - The host readies up only once every seat is taken and every joiner is
+ *    ready, so the start message always follows the final table. */
+#define LM_PING  1
+#define LM_PONG  2
+#define LM_DELAY 3
+#define LM_HELLO 4
+#define LM_TABLE 5
+#define HELLO_TTL 150                 /* frames without a HELLO: the slot is gone */
+
+#ifdef ESP_FAST128
+static void lobby_apply_rtt(uint8_t *samples,uint8_t rtt) __naked {
+ __asm
+    pop af
+    pop de
+    pop hl
+    push hl
+    push de
+    push af
+    push de
+    push hl
+    ld bc,3
+    add hl,bc
+    ld d,h
+    ld e,l
+    dec hl
+    lddr
+    pop hl
+    pop de
+    ld (hl),e
+    ld b,4
+    xor a
+r9_max:
+    cp (hl)
+    jr nc,r9_keep
+    ld a,(hl)
+r9_keep:
+    inc hl
+    djnz r9_max
+    srl a
+    adc a,0
+    or a
+    jr nz,r9_nonzero
+    inc a
+r9_nonzero:
+    cp 9
+    jr c,r9_store
+    ld a,8
+r9_store:
+    ld (_net_delay),a
+    ret
+ __endasm;
+}
+#else
+static void lobby_apply_rtt(uint8_t *samples, uint8_t rtt) {
+  uint8_t i, m = 0, d;
+  for (i = 3; i > 0; i--) samples[i] = samples[i - 1];
+  samples[0] = rtt;
+  for (i = 0; i < 4; i++) if (samples[i] > m) m = samples[i];
+  d = (uint8_t)((m + 1) / 2);
+  if (d < NET_DELAY_MIN) d = NET_DELAY_MIN;
+  if (d > NET_DELAY_MAX) d = NET_DELAY_MAX;
+  net_delay = d;
+}
+
+#endif
+
+typedef struct {
+  uint8_t host, seq, sent_at, samples[4];
+  uint16_t n;                         /* lobby frame counter */
+  uint8_t counts[NET_SLOTS];          /* host: local players per slot (0 = empty) */
+  uint16_t seen[NET_SLOTS];           /* host: frame of the slot's last HELLO */
+  uint8_t seats, got_table, got_delay;
+} lobby_t;
+
+/* host: seat the players in slot order; returns 1 when the table changed */
+static uint8_t lobby_build_table(lobby_t *L) {
+  uint8_t t[MAX_PLAYERS], s, l, p = 0, i, changed = 0;
+  for (i = 0; i < MAX_PLAYERS; i++) t[i] = 0xff;
+  for (s = 0; s < NET_SLOTS; s++)
+    for (l = 0; l < L->counts[s] && p < net_total; l++) t[p++] = (uint8_t)(s * 4 + l);
+  for (i = 0; i < MAX_PLAYERS; i++) if (t[i] != net_table[i]) { net_table[i] = t[i]; changed = 1; }
+  if (p != L->seats) { L->seats = p; changed = 1; }
+  return changed;
+}
+
+static void lobby_send_table(lobby_t *L) {
+  uint8_t m[8], i;
+  m[0] = LM_TABLE; m[1] = net_total; m[2] = L->seats;
+  for (i = 0; i < MAX_PLAYERS; i++) m[3 + i] = net_table[i];
+  net_msg_send(0xff, m, 7);
+}
+
+static void lobby_send_delay(void) {
+  uint8_t m[2]; m[0] = LM_DELAY; m[1] = net_delay;
+  net_msg_send(0xff, m, 2);
+}
+
+static void lobby_send_hello(void) {
+  uint8_t m[2]; m[0] = LM_HELLO; m[1] = menu_local;
+  net_msg_send(0, m, 2);
+}
+
+/* drain the message queue */
+static void lobby_messages(lobby_t *L) {
+  uint8_t from, m[32], len, i;
+  while ((len = net_msg_recv(&from, m)) != 0) {
+    if (L->host) {
+      if (m[0] == LM_PONG && len >= 2 && m[1] == L->seq && from != 0) {
+#ifdef ESP_FAST128
+        uint8_t rtt=(uint8_t)(L->n-L->sent_at);
+        L->got_delay=0; /* host: no longer awaiting this ping */
+        lobby_apply_rtt(L->samples,rtt?rtt:1);
+#else
+        lobby_apply_rtt(L->samples, (uint8_t)(L->n - L->sent_at));
+#endif
+      }
+      else if (m[0] == LM_HELLO && len >= 2 && from > 0 && from < NET_SLOTS) {
+        L->counts[from] = m[1] > 3 ? 3 : m[1];
+        L->seen[from] = L->n;
+      }
+    } else if (from == 0) {
+      if (m[0] == LM_PING && len >= 2) {
+        uint8_t r[2]; r[0] = LM_PONG; r[1] = m[1];
+        net_msg_send(0, r, 2);
+      } else if (m[0] == LM_DELAY && len >= 2) {
+        net_delay = m[1] < NET_DELAY_MIN ? NET_DELAY_MIN : m[1] > NET_DELAY_MAX ? NET_DELAY_MAX : m[1];
+        L->got_delay = 1;
+      } else if (m[0] == LM_TABLE && len >= 7) {
+        net_total = m[1] < 2 ? 2 : m[1] > MAX_PLAYERS ? MAX_PLAYERS : m[1];
+        L->seats = m[2];
+        for (i = 0; i < MAX_PLAYERS; i++) net_table[i] = m[3 + i];
+        L->got_table = 1;
+      }
+    }
+  }
+}
+
+static uint8_t bit_count(uint8_t v) {
+  uint8_t c = 0;
+  while (v) { c += v & 1; v >>= 1; }
+  return c;
+}
+
+/* create or join, then wait until everybody is ready; returns 1 to start */
+static uint8_t net_lobby(void) {
+  uint8_t settings[16], len = 2, r, edge, ready = 0, announced_delay = 0, i;
+  uint16_t seed, start;
+  char l2[32], l3[32];
+  net_status_t st;
+  lobby_t L;
+  memset(&L, 0, sizeof(L));
+  L.host = menu_net == NET_HOST;
+  net_delay = NET_DELAY_MIN + 1;
+  settings[0] = menu_mode; settings[1] = menu_players;
+  for (i = 0; i < MAX_PLAYERS; i++) net_table[i] = 0xff;
+  if (L.host) {
+    r = net_create(BUILD_ID, menu_players, settings, len, net_code, &net_slot);
+    if (r) { lobby_error(r); return 0; }
+    net_slots = menu_players;
+    net_total = menu_players;
+    L.counts[0] = menu_local;
+    lobby_build_table(&L);
+  } else {
+    if (!lobby_enter_code()) return 0;
+    r = net_join(BUILD_ID, net_code, &net_slot, &net_slots, settings, &len);
+    if (r) { lobby_error(r); return 0; }
+    if (len >= 2) { menu_mode = settings[0]; menu_players = settings[1]; menu_validate(); }
+    net_total = menu_players;
+    lobby_send_hello();
+  }
+  st.members = 1; st.ready_mask = 0; st.state = NETST_INROOM;
+  net_status(&st);
+  for (;;) {
+    L.n++;
+    if ((L.n & 7) == 0) net_status(&st);
+    lobby_messages(&L);
+    if (L.host) {
+#ifdef ESP_FAST128
+      if (L.got_delay && (uint8_t)(L.n-L.sent_at)>=50) L.got_delay=0;
+      if (!L.got_delay && st.members > 1 && (L.n % 10) == 0) {
+#else
+      if (st.members > 1 && (L.n % 10) == 0) {
+#endif          /* ping the joiners */
+        uint8_t m[2]; m[0] = LM_PING; m[1] = ++L.seq; L.sent_at = (uint8_t)L.n;
+        net_msg_send(0xff, m, 2);
+#ifdef ESP_FAST128
+        L.got_delay=1;
+#endif
+      }
+      for (i = 1; i < NET_SLOTS; i++)                    /* forget joiners that left */
+        if (L.counts[i] && (uint16_t)(L.n - L.seen[i]) > HELLO_TTL) L.counts[i] = 0;
+      if (lobby_build_table(&L) || (L.n % 50) == 0) { if (st.members > 1) lobby_send_table(&L); }
+      if (announced_delay != net_delay && st.members > 1) { announced_delay = net_delay; lobby_send_delay(); }
+    } else if ((L.n % 50) == 0) {
+      lobby_send_hello();
+    }
+    strcpy(l2, "ROOM ABCD  SEATS 0 OF 0");
+    memcpy(l2 + 5, net_code, 4);
+    l2[17] = '0' + L.seats; l2[22] = '0' + net_total;
+    /* what the lobby is doing right now, so a pause is never silent */
+    if (!L.host && !L.got_table) {
+      strcpy(lobby_extra, "WAITING FOR THE HOST");
+    } else if (L.seats < net_total) {
+      strcpy(lobby_extra, "WAITING FOR PLAYERS");
+#ifdef ESP_FAST128
+    } else if (L.host && st.members<2) {
+      strcpy(lobby_extra, "SPACE READY TO START");
+#endif
+    } else if (L.host ? L.samples[0] == 0 : !L.got_delay) {
+      strcpy(lobby_extra, L.host ? "MEASURING THE LINK" : "HOST MEASURES THE LINK");
+    } else {
+      uint16_t ms = (uint16_t)net_delay * FRAME_MS;       /* a game frame is three TV frames */
+      strcpy(lobby_extra, "DELAY 000MS   READY 0 OF 0");
+      lobby_extra[6] = '0' + (uint8_t)(ms / 100); lobby_extra[7] = '0' + (uint8_t)((ms / 10) % 10);
+      lobby_extra[20] = '0' + bit_count(st.ready_mask); lobby_extra[25] = '0' + st.members;
+    }
+    if (lobby_extra[0] != 'D') {              /* animated dots while waiting */
+      uint8_t d = (L.n >> 3) & 3, k = (uint8_t)strlen(lobby_extra);
+      for (r = 0; r < 3; r++) lobby_extra[k + r] = r < d ? '.' : ' ';
+      lobby_extra[k + 3] = 0;
+    }
+    strcpy(l3, ready ? "WAITING FOR THE OTHERS" : "SPACE READY  BREAK CANCEL");
+    edge = lobby_frame(L.host ? "YOU ARE THE HOST" : "JOINED", l2, l3);
+#ifdef HOST
+    if (getenv("SIM_LOBBY_DEBUG")) fprintf(stderr, "lobby n=%u ready=%u seats=%u total=%u members=%u mask=%02x state=%u edge=%02x\n", L.n, ready, L.seats, net_total, st.members, st.ready_mask, st.state, edge);
+#endif
+    lobby_extra[0] = 0;
+    if (st.state == NETST_DROPPED || st.state == NETST_NOLINK) { lobby_error(9); net_leave(); return 0; }
+    if (plat_key_char() == 0x1b) { net_leave(); return 0; }          /* BREAK cancels */
+    if (!ready && (edge & KEY_SPACE)) { ready = 1; plat_tone(0x030a, 14); }
+    if (ready && (L.n & 7) == 1) {
+      /* the host goes last: full table, every joiner ready */
+      if (L.host && (L.seats < net_total || bit_count(st.ready_mask & 0xfe) < st.members - 1)) continue;
+      if (L.host) { lobby_send_table(&L); lobby_send_delay(); }
+      if (net_ready(1, &seed, &start) == 0 && seed != 0xffff) {
+        match_seed = seed;
+        lobby_messages(&L);                                /* a late announcement */
+        if (!L.host && !L.got_table) {                     /* should not happen: one player per slot */
+          for (i = 0; i < MAX_PLAYERS; i++) net_table[i] = (uint8_t)(i * 4);
+        }
+        menu_players = net_total;
+        return 1;
+      }
+    }
+  }
+}
+
+static void title_frame(void) {
+  uint8_t i;
+  tick_timers();
+  title_menu();
+  memcpy(draw_buf, title_logo, 240);
+  print_string(draw_at(2, TR(24)), str_copyright);
+  print_string(draw_at(4, TR(7)), str_legend_row7);
+  print_string(draw_at(5, TR(8)), str_legend_row8);
+  put_tile(draw_at(2, TR(7)), C_PLAYER_B);
+  draw_enemies();
+  if (tmr_player_anim.counter == 0) {
+    bomb_anim ^= 2;
+    enemy_anim ^= 2;
+  }
+}
+
+/* returns when SPACE is pressed */
+static void title_screen(void) {
+  title_init();
+  kbd_alt_fire = 0;                    /* the title starts on SPACE */
+  update_fire_key();
+  for (;;) {
+    while (plat_keys_a() & KEY_SPACE) title_frame();   /* release a held SPACE first */
+    do { title_frame(); } while (!(plat_keys_a() & KEY_SPACE));
+    if (menu_net == NET_OFF || net_device != NETDEV_NET) return;
+    while (plat_keys_a() & KEY_SPACE) title_frame();
+    if (net_lobby()) return;
+  }
+}
+
+/* ---- stage life cycle ---- */
+static void stage_start(void) {
+  time_left = 1000;
+  timeout_flag = 0;
+  stage_cleared = 0;
+  bonus_present = exit_present = 0;
+  hit_spawned = hit_pending = 0;
+  bonus_revealed = exit_revealed = 0;
+  exit_touched = 0;
+  load_stage_params();
+  clear_enemies();
+  spawn_enemies();
+  clear_bombs();
+  clear_buffers();
+  clear_map();
+  map_walls();
+  generate_map();
+  players_stage_reset();
+  composite_map();
+  bonus_present = exit_present = 0;   /* hidden until their brick burns (original 1268h) */
+  if (game_mode == GAME_DM) {         /* no items in the arena */
+    bonus_revealed = exit_revealed = 1;
+    exit_x = exit_y = 0;
+  }
+  if (hash_period) compute_state_hash();
+  title_mode = 0;
+}
+
+static void time_bonus(void) {
+  while (time_left) {
+    uint8_t i;
+    frame_minimal();
+    plat_tone(0x0a00, 10);
+    time_left -= 10;
+    for (i = 0; i < MAX_PLAYERS; i++)
+      if (players[i].active && players[i].state < P_DYING) players[i].score++;
+  }
+  frame_minimal();
+  frame_minimal();
+}
+
+/* one stage; returns 0 = stage cleared, 1 = exit taken (replay), 2 = player died */
+static uint8_t play_stage(void) {
+  for (;;) {
+    frame();
+    if (net_abort) return 3;
+    if (players_finished()) return 2;
+    if (exit_touched) return 1;
+    if (stage_cleared) return 0;
+  }
+}
+
+/* all active players are dead: each loses a life; the match ends when
+ * nobody has lives left */
+static uint8_t lose_lives(void) {
+  uint8_t i, remaining = 0;
+  for (i = 0; i < MAX_PLAYERS; i++) {
+    player_t *p = &players[i];
+    if (!p->active) continue;
+    if (p->lives) p->lives--;
+    if (p->lives) remaining++;
+  }
+  return remaining;
+}
+
+/* ---- deathmatch ---- */
+
+/* 1 while more than one player is alive or someone is still dying */
+static uint8_t round_running(void) {
+  uint8_t i, alive = 0, dying = 0;
+  for (i = 0; i < MAX_PLAYERS; i++) {
+    player_t *p = &players[i];
+    if (!p->active) continue;
+    if (p->state < P_DYING) alive++;
+    else if (!p->life_lost) dying++;
+  }
+  return alive > 1 || dying;
+}
+
+/* winner index, or 0xff for a draw: last one standing, else most kills */
+static uint8_t round_winner(void) {
+  uint8_t i, best = 0xff, best_kills = 0, tie = 0, alive = 0, last = 0;
+  for (i = 0; i < MAX_PLAYERS; i++) {
+    player_t *p = &players[i];
+    if (!p->active) continue;
+    if (p->state < P_DYING) { alive++; last = i; }
+    if (p->kills > best_kills) { best_kills = p->kills; best = i; tie = 0; }
+    else if (p->kills == best_kills && best != 0xff) tie = 1;
+  }
+  if (alive == 1) return last;
+  return tie ? 0xff : best;
+}
+
+/* framed message box centred on the arena: columns 8..31, rows 9..14 */
+#define BOX_X 8
+#define BOX_W 24
+#define BOX_Y 9
+#define BOX_H 6
+
+static void draw_box(void) {
+  uint8_t r, c;
+  for (r = 0; r < BOX_H; r++) {
+    uint8_t *p = draw_at(BOX_X, BOX_Y + r);
+    uint8_t edge = (r == 0 || r == BOX_H - 1);
+    for (c = 0; c < BOX_W; c++) p[c] = edge ? C_BOX_H : C_SPACE;
+    if (!edge) { p[0] = C_BOX_V; p[BOX_W - 1] = C_BOX_V; }
+  }
+  *draw_at(BOX_X, BOX_Y) = C_BOX_TL;
+  *draw_at(BOX_X + BOX_W - 1, BOX_Y) = C_BOX_TR;
+  *draw_at(BOX_X, BOX_Y + BOX_H - 1) = C_BOX_BL;
+  *draw_at(BOX_X + BOX_W - 1, BOX_Y + BOX_H - 1) = C_BOX_BR;
+}
+
+static void box_line(uint8_t row, const char *s) {
+  uint8_t len = (uint8_t)strlen(s), i;
+  uint8_t *p = draw_at(BOX_X + (BOX_W - len) / 2, row);
+  hud_text(p, s);
+  for (i = 0; i < len; i++)                 /* '1'..'4' after "PLAYER " in colour */
+    if (i >= 7 && s[i] >= '1' && s[i] <= '4' && s[i - 1] == ' ' && s[0] == 'P') p[i] = C_PLAYER_DIGIT(s[i] - '1');
+}
+
+/* framed message in the middle of the arena until fire is pressed (min 40 frames) */
+static void show_message(const char *l1, const char *l2) {
+  uint8_t n = 40, i, any;
+  for (;;) {
+    frame_minimal();
+    draw_box();
+    box_line(BOX_Y + 2, l1);
+    box_line(BOX_Y + 3, l2);
+    input_poll();
+    any = 0;
+    for (i = 0; i < MAX_PLAYERS; i++)
+      if (players[i].active && (players[i].keys & KEY_SPACE)) any = 1;
+    /* after a network match ended (abort) the player records still read the
+     * lockstep vector, which no longer arrives: listen to the local keys
+     * (only then: a local game must see nothing but the players' own input,
+     * or recordings do not replay) */
+    if (!net_active && players[0].input == INPUT_NET && ((plat_keys_a() | plat_keys_b()) & KEY_SPACE)) any = 1;
+    if (n) n--;
+    else if (any) return;
+  }
+}
+
+static void run_deathmatch(void) {
+  char line[24];
+  uint8_t w, i;
+  players_setup(menu_players);
+  stage = 1;
+  for (;;) {
+    stage_start();
+    do { frame(); } while (round_running() && !timeout_flag && !net_abort);
+    if (net_abort) return;
+    idle_frames(10);
+    w = round_winner();
+    if (w == 0xff) {
+      show_message("DRAW", "PRESS FIRE");
+    } else {
+      players[w].wins++;
+      strcpy(line, "PLAYER 1 WINS");
+      line[7] = '1' + w;
+      if (players[w].wins >= DM_ROUNDS_TO_WIN) {
+        show_message(line, "THE MATCH");
+        return;
+      }
+      show_message(line, "THE ROUND");
+    }
+    for (i = 0; i < MAX_PLAYERS; i++) players[i].keys = 0;
+    stage++;
+  }
+}
+
+static void run_match(void) {
+  game_mode = menu_mode;
+  kbd_alt_fire = menu_fire_cr;
+  rng_seed(match_seed);
+  frame_no = 0;
+  tmr_player_anim.counter = tmr_enemy_die.counter = tmr_enemy_move.counter = 0;
+  tmr_time.counter = 2;
+  enemy_anim = bomb_anim = 0;
+  if (game_mode == GAME_DM) { run_deathmatch(); return; }
+  players_setup(menu_players);
+  stage = 1;
+  for (;;) {
+    stage_start();
+    switch (play_stage()) {
+    case 3:
+      return;                         /* network match aborted */
+    case 0:
+      idle_frames(20);
+      time_bonus();
+      stage++;
+      plat_delay();
+      break;
+    case 1:
+      idle_frames(5);
+      break;
+    default:
+      plat_delay();
+      if (lose_lives() == 0) {
+        idle_frames(5);
+        return;                       /* game over */
+      }
+      break;
+    }
+  }
+}
+
+static void run_game(void) {
+  if (menu_net != NET_OFF && net_device == NETDEV_NET) {
+    hash_period = 16;
+    net_match_start();
+  }
+  run_match();
+  if (net_active) {
+    uint8_t reason = net_abort;
+    net_match_end();
+    if (reason) show_message(reason == NETST_DESYNC ? "DESYNC" : reason == NET_ABORT_BREAK ? "MATCH LEFT" : "CONNECTION LOST", "PRESS FIRE");
+  }
+}
+
+#ifdef HOST
+void game_main(void)
+#else
+void main(void)
+#endif
+{
+  plat_init();
+  net_detect();
+  clear_buffers();
+  hi_score = 0;
+  players_setup(1);
+  for (;;) {
+    title_screen();
+    run_game();
+  }
+}
+

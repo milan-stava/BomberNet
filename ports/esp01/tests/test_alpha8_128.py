@@ -32,7 +32,7 @@ def sound():
         gaps=[b[0]-a[0] for a,b in zip(u.edges,u.edges[1:]) if (a[1]^b[1])&16 and b[0]-a[0]<10000]
         half=statistics.median(gaps);beeper=3500000/(2*half)
         z.poke(S('_net_active'),[1]);t=z.now();z.call('_plat_tone',ratio,14)
-        assert z.now()-t<2000
+        assert z.now()-t<3500  # under 1 ms, including initial channel muting/interrupt
         period=u.regs[0]+256*u.regs[1];ay=1773400/(16*period)
         assert abs(ay/beeper-1)<.025,(hex(ratio),beeper,ay)
         assert (u.regs[8],u.regs[11],u.regs[12],u.regs[13])==(16,6,0,9)

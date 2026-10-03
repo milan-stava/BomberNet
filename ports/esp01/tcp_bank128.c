@@ -9,6 +9,7 @@
 #include "bank_entries.h"
 extern uint8_t esp_stage[];
 #define STAGE esp_stage
+static uint8_t eb_rx_idle; /* only valid after a nonzero-capacity empty read */
 static uint16_t bank_call(uint16_t entry,uint16_t p1,uint16_t p2) __naked {
   __asm
     pop af
@@ -19,6 +20,8 @@ static uint16_t bank_call(uint16_t entry,uint16_t p1,uint16_t p2) __naked {
     push hl
     push de
     push af
+    xor a
+    ld (_eb_rx_idle),a
     ld (eb_arg1),hl
     ld (eb_arg2),de
     ld (eb_target),bc
@@ -190,7 +193,18 @@ int16_t tcp_recv(uint8_t *buf,uint16_t max) __naked {
     ld hl,65535
     ret
 eb_recv_valid:
+    ld a,(_eb_rx_idle)
+    or a
+    jr z,eb_recv_real
+    ld bc,0x133b
+    in a,(c)
+    and 5                  ; data available or hardware overflow -> full driver
+    jr nz,eb_recv_real
+    ld hl,0
+    ret
+eb_recv_real:
     push hl
+    push de
     ld a,d
     or a
     jr nz,eb_recv_cap
@@ -209,13 +223,21 @@ eb_recv_call:
     pop bc
     pop bc
     pop bc
+    pop bc
     pop de
     ld a,h
     or a
     ret nz
     ld a,l
     or a
-    ret z
+    jr nz,eb_recv_copy
+    ld a,b
+    or c
+    ret z                  ; max == 0 does not prove the bank ring is empty
+    ld a,1
+    ld (_eb_rx_idle),a
+    ret
+eb_recv_copy:
     push hl
     ld b,h
     ld c,l

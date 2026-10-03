@@ -13,7 +13,7 @@ uint8_t tcp_present(void) __naked {
     call es_drain
 es_present_probe:
     ld hl,es_at
-    call es_command
+    call es_probe
     or a
     jr z,es_present_ok
     ; Exit a previous transparent session without losing volatile Wi-Fi state.
@@ -21,7 +21,7 @@ es_present_probe:
     or a
     jr nz,es_present_power
     ld hl,es_at
-    call es_command
+    call es_probe
     or a
     jr z,es_present_ok
 es_present_power:
@@ -528,6 +528,15 @@ es_write:
     ret c
     out (c),e
     ret
+; AT discovery needs only 300 ms; retain ten seconds for real network commands.
+es_probe:
+    call es_start
+    ld hl,(es_tick)
+    ld de,485
+    or a
+    sbc hl,de
+    ld (es_tick),hl
+    jp es_wait
 es_command:
     push hl
     call es_wait

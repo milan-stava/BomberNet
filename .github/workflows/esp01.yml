@@ -64,6 +64,7 @@ jobs:
           "$RUNNER_TEMP/esp-emu/bin/python" ports/esp01/tests/test_bank128.py
           "$RUNNER_TEMP/esp-emu/bin/python" ports/esp01/tests/test_frame128.py
           "$RUNNER_TEMP/esp-emu/bin/python" ports/esp01/tests/test_alpha8_128.py
+          "$RUNNER_TEMP/esp-emu/bin/python" ports/esp01/tests/test_alpha9_128.py
           "$RUNNER_TEMP/esp-emu/bin/python" ports/esp01/tests/test_stream128.py
           "$RUNNER_TEMP/esp-emu/bin/python" ports/esp01/tests/bench128.py
           ESP_WALK=1 ESP_MATCH=ports/esp01/tests/profile128.py "$RUNNER_TEMP/esp-emu/bin/python" ports/esp01/tests/test_relay128.py

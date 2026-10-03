@@ -3,6 +3,7 @@ import sys, struct
 from pathlib import Path
 from bank_layout import symbols
 D=Path('build/esp01-128')
+ALPHA_VERSION=9
 game=(D/'bomber').read_bytes(); bank=(D/'esp_bank').read_bytes()
 g=symbols(D/'bomber.map'); b=symbols(D/'esp_bank.map')
 assert g['__head']==24000 and g['__BSS_END_tail']<=0xfdff
@@ -37,10 +38,10 @@ def line(n,text):
 basic=(line(10,b'\xfd '+number(32767))+
        line(20,b'\xef "" \xaf')+
        line(30,b'\xf9 \xc0 '+number(32768)))
-tape=(header(0,'Bomber128',basic,10,len(basic))+block(255,basic)+
+tape=(header(0,f'{ALPHA_VERSION}Bomberman',basic,10,len(basic))+block(255,basic)+
       header(3,'ESP loader',loader,32768,0x8000)+block(255,loader)+
       block(255,bank)+block(255,game))
-(D/'bombernet_esp01_128_alpha8.tap').write_bytes(tape)
+(D/f'bombernet_esp01_128_alpha{ALPHA_VERSION}.tap').write_bytes(tape)
 # Re-read every TAP block and its XOR checksum, including the raw data blocks.
 p=0; blocks=[]
 while p<len(tape):

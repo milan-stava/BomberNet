@@ -24,6 +24,11 @@ MN, MM, MP, ML, NC, NA, NAB, NS, NT, NTOT, NDLY = (S(n) for n in ('_menu_net', '
 
 def inst(name):
     z = BankZX(real=True)
+    if os.environ.get('ESP_REFERENCE_B')=='1' and name=='B':
+        previous=Path('build/alpha8-reference/bomber').read_bytes()
+        z.write(24000,previous,ram_page=0)
+        z.allocation_end=24000+len(previous)
+        z.write(0xc000,Path('build/alpha8-reference/esp_bank').read_bytes(),ram_page=6)
     z.pc = 24000
     if os.environ.get('ESP_WALK')=='1':
         assert PLAYERS==2
@@ -54,7 +59,9 @@ def tap(z, key, n=3, *others):
 t0 = time.time()
 a, b = inst('A'), inst('B')
 BSS_END = S('__BSS_END_tail')
-for z in (a, b): z.poke(BSS_END, bytes([0xa5]) * (0xff00 - BSS_END))   # stack watermark
+for z in (a, b):
+    allocation=getattr(z,'allocation_end',BSS_END)
+    z.poke(allocation, bytes([0xa5]) * (0xff00 - allocation))   # stack watermark
 frames(4, a, b)
 if os.environ.get('ESP_HISTORY')=='1':
     a.poke(S('_hit_x'),[7,12]);b.poke(S('_hit_x'),[22,3])
@@ -119,8 +126,9 @@ print(f'done: {N} steps, {len(common)} hashed frames compared, {len(mism)} misma
       f'{len(a.uart.commands) + len(b.uart.commands)} ESP commands; {time.time() - t0:.0f} s')
 a.screenshot('build/esp01-128/net_A.png'); b.screenshot('build/esp01-128/net_B.png')
 for name, z in (('A', a), ('B', b)):
-    m = z.read(BSS_END, 0xff00 - BSS_END)
-    used_from = next((BSS_END + i for i, v in enumerate(m) if v != 0xa5), 0xff00)
-    print(f'{name}: stack reached {used_from:04x}, {used_from - BSS_END} bytes above the program left unused')
+    allocation=getattr(z,'allocation_end',BSS_END)
+    m = z.read(allocation, 0xff00 - allocation)
+    used_from = next((allocation + i for i, v in enumerate(m) if v != 0xa5), 0xff00)
+    print(f'{name}: stack reached {used_from:04x}, {used_from - allocation} bytes above the program left unused')
 sys.exit(1 if mism or any(aborts) or not common else 0)
 

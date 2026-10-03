@@ -427,3 +427,57 @@ existing entry addresses. Normal source builds include these changes directly.
 This delivery is locally assembled and tested; no new GitHub Actions run is
 claimed. Regression checks: `tests/test_alpha8_128.py`, and
 `ESP_HISTORY=1 ESP_WALK=1 python ports/esp01/tests/test_relay128.py`.
+
+
+## 128K alpha 9: input response, CPU work, sound and reset recovery
+
+Load `bombernet_esp01_128_alpha9.tap`; its BASIC header is `9Bomberman`.
+Network play retains the original 60 ms simulation pace. ESP 128K now permits
+one frame of local input scheduling delay when the lobby round trip allows it,
+with ceil(round-trip/2) and the same maximum of eight. Longer/jittery connections
+still choose more frames. Zero-delay instant movement is not promised by this
+lockstep design. Two-player native tests have used 1/1 and mixed 1/2 delay
+against alpha 8 without hash mismatches; do not infer WAN latency from the
+accelerated emulator's wall time.
+
+WebSocket parsing, local vector send/poll, HUD number formatting, and the
+per-character player collision routine use assembly with equivalence checks.
+Typical empty reads also avoid paging after an actual empty receive: UART
+availability/overflow is still tested, and every bank call invalidates this
+shortcut because sends can pump bytes into the hidden ring. Zero-capacity
+reads cannot mark the ring empty. Tests cover these interactions explicitly.
+Controlled native-Z80 CPU timings at 3.5 MHz versus alpha 8:
+- Two-player HUD: 4.407 -> 2.255 ms; four-player HUD: 4.909 -> 2.838 ms.
+- Vector poll (without relay wait): 2.306 -> 1.138 ms.
+- Complete short WebSocket text: 0.994 -> 0.582 ms.
+- Player-char/collision samples: 0.112 -> 0.041 ms.
+- Cached empty RX: 0.052 ms, without paging.
+These isolate CPU work; physical screen-crossing speed still needs hardware
+verification. Emulator relay waits vary and are not physical timing results.
+
+Steps use AY channel A, bomb animation uses B, death/pickup/enemy effects C.
+They retain separate pitches instead of one event overwriting every effect.
+The AY envelope is shared by the chip; events can retrigger it. All volumes
+are cleared at the next frame boundary so old pitches cannot be revived by
+later steps, and the first event also clears inherited AY volumes. Normal
+short sounds still finish with the calibrated one-shot envelope. Offline
+beeper and all simulation/death/scoring rules remain unchanged.
+
+Whole multiplayer HUD segments get the player's ink on the existing bar
+paper, including both P2 glyphs across their shared attribute square. This
+also applies to local multiplayer; 1-player/title rendering stays as before.
+Discovery now gives its first AT probe 300 ms instead of the network-command
+10-second timeout. If ESP is still transparent it retains conservative
+one-second guards around +++; inherited-session recovery tests measure
+12.22 -> 2.39 simulated seconds without requiring power reset. Real network
+operations keep their normal deadlines and power fallback remains available.
+
+The locally assembled, retested TAP is 52,505 bytes: game 40,940, bank 11,358,
+loader 100. Reclaimed AY continuation gives game end FDAC (595 bytes below
+FFFF). Final two-player walking stack watermark leaves at least 261 bytes
+above allocation. The exact compatibility link is `tests/link_alpha9_overlay128.py`,
+starting from checksum-verified alpha 8 images. It reuses freed code space;
+normal source builds include the routines directly. No new CI run is claimed.
+Regression checks are `tests/test_alpha9_128.py`, the UART/loader/frame suites,
+and native two/four-player relay matches, including prior-hit-history injection
+and interoperability with the previous image.
