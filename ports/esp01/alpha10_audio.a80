@@ -1,0 +1,145 @@
+tone10:
+    pop af
+    pop de
+    pop hl
+    push hl
+    push de
+    push af
+    ld a,(_ay_active)
+    or a
+    jr nz,a10_ready
+    push hl
+    push de
+    ld hl,8
+    call _zx_ay
+    ld hl,9
+    call _zx_ay
+    ld hl,10
+    call _zx_ay
+    xor a
+    ld (_ay_remaining),a
+    ld (_ay_remaining+1),a
+    ld (_ay_remaining+2),a
+    pop de
+    pop hl
+a10_ready:
+    ld a,1
+    ld (_ay_active),a
+    ld b,0
+    ld a,e
+    cp 14
+    jr z,a10_channel
+    inc b
+    cp 12
+    jr z,a10_channel
+    inc b
+a10_channel:
+    push hl
+    ld hl,_ay_remaining
+    ld c,b
+    ld a,b
+    or a
+    jr z,a10_duration
+    inc hl
+    dec a
+    jr z,a10_duration
+    inc hl
+a10_duration:
+    ld a,e
+    cp 32
+    ld a,1
+    jr c,a10_save
+    ld a,e
+    cp 48
+    ld a,2
+    jr c,a10_save
+    ld a,3
+a10_save:
+    ld (hl),a
+    pop hl
+    ld a,c
+    add a,a
+    push af
+    ld c,l
+    ld a,h
+    and 15
+    add a,a
+    ld e,a
+    ld d,0
+    ld hl,a10_periods
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ex de,hl
+    ld a,c
+    cp 50
+    jr nz,a10_pitch
+    ld de,5
+    add hl,de
+a10_pitch:
+    pop af
+    ld b,a
+    ld d,h
+    ld h,l
+    ld l,b
+    push bc
+    call _zx_ay
+    pop bc
+    ld h,d
+    ld a,b
+    inc a
+    ld l,a
+    push bc
+    call _zx_ay
+    pop bc
+    ld a,b
+    rrca
+    add a,8
+    ld l,a
+    ld h,12
+    call _zx_ay
+    ld hl,0x3807
+    jp _zx_ay
+a10_periods:
+    defw 6,27,52,78,103,129,154,180,205,231,256,283,307,334,358,385
+update10:
+    ld a,(_ay_active)
+    or a
+    ret z
+    ld a,(_net_active)
+    or a
+    jr nz,a10_running
+    ld hl,8
+    call _zx_ay
+    ld hl,9
+    call _zx_ay
+    ld hl,10
+    call _zx_ay
+    xor a
+    ld (_ay_active),a
+    ret
+a10_running:
+    ld de,_ay_remaining
+    ld b,3
+    ld l,8
+a10_decay:
+    ld a,(de)
+    or a
+    jr z,a10_next
+    dec a
+    ld (de),a
+    jr nz,a10_next
+    push bc
+    push de
+    push hl
+    ld h,0
+    call _zx_ay
+    pop hl
+    pop de
+    pop bc
+a10_next:
+    inc de
+    inc l
+    djnz a10_decay
+    ret

@@ -58,7 +58,7 @@ def sound_and_reset():
     z.poke(S('_net_active'),[1]);t=z.now();z.call('_plat_tone',0x030a,14);fast=z.now()-t
     assert fast<old*.2,(old,fast)
     regs=dict(zip([v for p,v in uart.ay if p==0xfffd],[v for p,v in uart.ay if p==0xbffd]))
-    assert regs[0]+256*regs[1]==78 and regs[8]==16 and regs[11]==6 and regs[12]==0 and regs[13]==9,regs
+    assert regs[0]+256*regs[1]==78 and regs[8]==12,regs
     z.poke(S('_net_active'),[0]);z.call('_plat_frame_sync')
     regs=dict(zip([v for p,v in uart.ay if p==0xfffd],[v for p,v in uart.ay if p==0xbffd]))
     assert all(regs[r]==0 for r in (8,9,10))
@@ -89,3 +89,4 @@ def hash_schedule():
     print('PASS: fast hash schedule matches general hash including frame wrap and alternate periods')
 
 if __name__=='__main__':hash_schedule()
+

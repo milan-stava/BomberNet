@@ -114,7 +114,13 @@ static void frame_common(void) {
 #endif
 }
 
+#ifdef ESP_FAST128
+uint8_t esp_defer_present;
+#endif
 static void frame(void) {
+#ifdef ESP_FAST128
+  esp_defer_present=1;
+#endif
   frame_common();
   input_poll();
   update_bombs();
@@ -136,6 +142,10 @@ static void frame(void) {
     hash_frame_step();
     if (net_active && (frame_no % hash_period) == 0) net_hash(frame_no, state_hash);
   }
+#ifdef ESP_FAST128
+  esp_defer_present=0;
+  if (net_active) { flush_screen(); players_death_colour(); }
+#endif
 }
 
 /* animations only: no input, no AI */
@@ -974,4 +984,5 @@ void main(void)
     run_game();
   }
 }
+
 

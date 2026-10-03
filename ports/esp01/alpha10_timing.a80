@@ -1,0 +1,80 @@
+; Maintain the 60 ms simulation clock without rounding late work upward.
+sync10:
+    push ix
+    ld a,(0x5c78)
+    ld hl,_last_tick
+    sub (hl)
+    cp 3
+    push af
+s10_wait:
+    ld a,(0x5c78)
+    ld hl,_last_tick
+    sub (hl)
+    cp 3
+    jr nc,s10_due
+    ld a,(_net_active)
+    or a
+    jr z,s10_wait
+    call _net_background
+    jr s10_wait
+s10_due:
+    ld c,a
+    ld a,(_net_active)
+    or a
+    jr z,s10_reset
+    ld a,c
+    cp 6
+    jr nc,s10_reset
+    ld a,(_last_tick)
+    add a,3
+    jr s10_store
+s10_reset:
+    ld a,(0x5c78)
+s10_store:
+    ld (_last_tick),a
+    pop af
+    push af
+    call _ay_update
+    pop af
+    jr nc,s10_done
+    ld hl,0x001f
+    call _zx_in
+    ld a,l
+    ld (_joy_kempston),a
+    ld hl,0x007f
+    call _zx_in
+    ld a,l
+    ld (_joy_fuller),a
+s10_done:
+    pop ix
+    ret
+
+; Present network simulation output immediately, instead of next frame.
+frame10:
+    ld a,1
+    ld (_esp_defer_present),a
+    call _frame_common
+    call _frame+3
+    xor a
+    ld (_esp_defer_present),a
+    ld a,(_net_active)
+    or a
+    ret z
+    call _flush_screen
+    jp _players_death_colour
+flush10:
+    ld a,(_esp_defer_present)
+    or a
+    jp z,_flush_screen
+    ld a,(_net_active)
+    or a
+    ret nz
+    jp _flush_screen
+colour10:
+    ld a,(_esp_defer_present)
+    or a
+    jp z,_players_death_colour
+    ld a,(_net_active)
+    or a
+    ret nz
+    jp _players_death_colour

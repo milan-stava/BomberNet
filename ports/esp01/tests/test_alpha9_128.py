@@ -40,7 +40,7 @@ def audio():
     z.call('_plat_tone',0x0232,10);effect=(u.v[4],u.v[5])
     z.call('_plat_tone',0x020a,14)
     assert (u.v[2],u.v[3])==bomb and (u.v[4],u.v[5])==effect
-    assert [u.v[i] for i in (8,9,10)]==[16]*3 and u.v[7]==0x38
+    assert [u.v[i] for i in (8,9,10)]==[12]*3 and u.v[7]==0x38
     z.poke(S('_net_active'),[0]);z.call('_plat_frame_sync')
     assert [u.v[i] for i in (8,9,10)]==[0]*3
     print('PASS: steps, bombs and effects retain separate audible AY channels; all mute on exit')
@@ -181,3 +181,4 @@ def idle_rx():
     print('PASS: idle RX skips paging; sends, zero-capacity reads and overflow retain correct behavior')
 
 if __name__=='__main__':idle_rx()
+

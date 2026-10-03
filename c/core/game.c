@@ -211,8 +211,15 @@ void tick_timers(void) {
   tick_timer(&tmr_enemy_move);
   tick_timer(&tmr_time);
   plat_frame_sync();
+#ifdef ESP_FAST128
+  extern uint8_t esp_defer_present;
+  if (!net_active || !esp_defer_present) {
+#endif
   flush_screen();
   players_death_colour();
+#ifdef ESP_FAST128
+  }
+#endif
 }
 
 

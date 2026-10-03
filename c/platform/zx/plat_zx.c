@@ -197,6 +197,7 @@ extern void net_background(void);
 #endif
 #ifdef ESP_FAST128
 static uint8_t ay_active;
+static uint8_t ay_remaining[3];
 static void zx_ay(uint16_t rv) __z88dk_fastcall __naked {
   __asm
     ld e,h
@@ -218,7 +219,7 @@ static void ay_tone(uint16_t ratio,uint8_t len) __naked {
     push af
     ld a,(_ay_active)
     or a
-    jr nz,a9_ready
+    jr nz,a10_ready
     push hl
     push de
     ld hl,8
@@ -227,31 +228,49 @@ static void ay_tone(uint16_t ratio,uint8_t len) __naked {
     call _zx_ay
     ld hl,10
     call _zx_ay
+    xor a
+    ld (_ay_remaining),a
+    ld (_ay_remaining+1),a
+    ld (_ay_remaining+2),a
     pop de
     pop hl
-a9_ready:
+a10_ready:
     ld a,1
     ld (_ay_active),a
     ld b,0
     ld a,e
     cp 14
-    jr z,a9_channel
-    ld b,2
+    jr z,a10_channel
+    inc b
     cp 12
-    jr z,a9_channel
-    ld b,4
-a9_channel:
-    push bc
+    jr z,a10_channel
+    inc b
+a10_channel:
+    push hl
+    ld hl,_ay_remaining
+    ld c,b
+    ld a,b
+    or a
+    jr z,a10_duration
+    inc hl
+    dec a
+    jr z,a10_duration
+    inc hl
+a10_duration:
     ld a,e
     cp 32
-    ld a,6
-    jr c,a9_env
+    ld a,1
+    jr c,a10_save
     ld a,e
     cp 48
-    ld a,13
-    jr c,a9_env
-    ld a,20
-a9_env:
+    ld a,2
+    jr c,a10_save
+    ld a,3
+a10_save:
+    ld (hl),a
+    pop hl
+    ld a,c
+    add a,a
     push af
     ld c,l
     ld a,h
@@ -259,7 +278,7 @@ a9_env:
     add a,a
     ld e,a
     ld d,0
-    ld hl,a9_periods
+    ld hl,a10_periods
     add hl,de
     ld e,(hl)
     inc hl
@@ -267,13 +286,12 @@ a9_env:
     ex de,hl
     ld a,c
     cp 50
-    jr nz,a9_pitch
+    jr nz,a10_pitch
     ld de,5
     add hl,de
-a9_pitch:
+a10_pitch:
     pop af
-    pop bc
-    push af
+    ld b,a
     ld d,h
     ld h,l
     ld l,b
@@ -291,27 +309,59 @@ a9_pitch:
     rrca
     add a,8
     ld l,a
-    ld h,16
+    ld h,12
     call _zx_ay
     ld hl,0x3807
-    call _zx_ay
-    pop af
-    ld h,a
-    ld l,11
-    call _zx_ay
-    ld hl,12
-    call _zx_ay
-    ld hl,0x090d
     jp _zx_ay
-a9_periods:
+a10_periods:
     defw 6,27,52,78,103,129,154,180,205,231,256,283,307,334,358,385
  __endasm;
 }
-static void ay_update(void) {
-  if (ay_active) {
-    zx_ay(8); zx_ay(9); zx_ay(10); ay_active=0;
-  }
+static void ay_update(void) __naked {
+ __asm
+
+    ld a,(_ay_active)
+    or a
+    ret z
+    ld a,(_net_active)
+    or a
+    jr nz,a10_running
+    ld hl,8
+    call _zx_ay
+    ld hl,9
+    call _zx_ay
+    ld hl,10
+    call _zx_ay
+    xor a
+    ld (_ay_active),a
+    ret
+a10_running:
+    ld de,_ay_remaining
+    ld b,3
+    ld l,8
+a10_decay:
+    ld a,(de)
+    or a
+    jr z,a10_next
+    dec a
+    ld (de),a
+    jr nz,a10_next
+    push bc
+    push de
+    push hl
+    ld h,0
+    call _zx_ay
+    pop hl
+    pop de
+    pop bc
+a10_next:
+    inc de
+    inc l
+    djnz a10_decay
+    ret
+ __endasm;
 }
+
 #endif
 void plat_frame_sync(void) {                       /* a game frame is three TV frames */
   uint8_t late = (uint8_t)(*FRAMES_LO - last_tick) >= 3;
@@ -320,7 +370,12 @@ void plat_frame_sync(void) {                       /* a game frame is three TV f
     if (net_active) net_background();
 #endif
   }
+#ifdef ESP_FAST128
+  if (net_active && (uint8_t)(*FRAMES_LO-last_tick)<6) last_tick += 3;
+  else last_tick = *FRAMES_LO;
+#else
   last_tick = *FRAMES_LO;
+#endif
 #ifdef ESP_FAST128
   ay_update();
 #endif
@@ -988,3 +1043,4 @@ fz_rowtab:                  ; address of pixel line 0, byte 1 of each character 
     defw 0x5001, 0x5021, 0x5041, 0x5061, 0x5081, 0x50a1, 0x50c1, 0x50e1
   __endasm;
 }
+

@@ -35,7 +35,8 @@ def sound():
         assert z.now()-t<3500  # under 1 ms, including initial channel muting/interrupt
         period=u.regs[0]+256*u.regs[1];ay=1773400/(16*period)
         assert abs(ay/beeper-1)<.025,(hex(ratio),beeper,ay)
-        assert (u.regs[8],u.regs[11],u.regs[12],u.regs[13])==(16,6,0,9)
-    print('PASS: AY pitch within 2.5% of measured beeper; one-shot 13.86ms envelope, nonblocking')
+        assert u.regs[8]==12
+    print('PASS: AY pitch within 2.5% of measured beeper; independent channel duration, nonblocking')
 
 if __name__=='__main__':history();sound()
+

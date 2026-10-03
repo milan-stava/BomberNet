@@ -3,7 +3,7 @@ import sys, struct
 from pathlib import Path
 from bank_layout import symbols
 D=Path('build/esp01-128')
-ALPHA_VERSION=9
+ALPHA_VERSION=10
 game=(D/'bomber').read_bytes(); bank=(D/'esp_bank').read_bytes()
 g=symbols(D/'bomber.map'); b=symbols(D/'esp_bank.map')
 assert g['__head']==24000 and g['__BSS_END_tail']<=0xfdff
@@ -55,3 +55,4 @@ while p<len(tape):
 assert len(blocks)==6 and p==len(tape)
 assert blocks[4][1:-1]==bank and blocks[5][1:-1]==game
 print('TAP: %d bytes; loader %d, ESP image %d, game image %d' % (len(tape),len(loader),len(bank),len(game)))
+
