@@ -24,12 +24,15 @@ MN, MM, MP, ML, NC, NA, NAB, NS, NT, NTOT, NDLY = (S(n) for n in ('_menu_net', '
 
 def inst(name):
     z = BankZX(real=True)
-    if os.environ.get('ESP_REFERENCE_B')=='1' and name=='B':
-        previous=Path('build/alpha8-reference/bomber').read_bytes()
-        z.write(24000,previous,ram_page=0)
-        z.allocation_end=24000+len(previous)
-        z.write(0xc000,Path('build/alpha8-reference/esp_bank').read_bytes(),ram_page=6)
     z.pc = 24000
+    ref=os.environ.get('ESP_REFERENCE_'+name)
+    z.reference=bool(ref)
+    if ref:
+        raw=Path(ref,'bomber').read_bytes();z.write(24000,raw,ram_page=0)
+        z.allocation_end=24000+len(raw)
+        if os.environ.get('ESP_LEGACY_MIN2')=='1':
+            z.poke(S('_lobby_apply_rtt'),b'\x3e\x02\x32'+NDLY.to_bytes(2,'little')+b'\xc9')
+    else:z.allocation_end=S('__BSS_END_tail')
     if os.environ.get('ESP_WALK')=='1':
         assert PLAYERS==2
         stage_reset=S('_players_stage_reset');z.set_breakpoint(stage_reset)
@@ -49,7 +52,12 @@ def inst(name):
 
 
 def frames(n, *ms):                        # n frames on each, the machines running side by side
-    run_together(ms, F, n)
+    if 'link' not in globals():
+        run_together(ms,F,n);return
+    counts=[0]*len(ms)
+    while min(counts)<n:
+        i=min(range(len(ms)),key=lambda i:link.now(i))
+        if ms[i].step()==F:counts[i]+=1
 
 
 def tap(z, key, n=3, *others):
@@ -59,9 +67,7 @@ def tap(z, key, n=3, *others):
 t0 = time.time()
 a, b = inst('A'), inst('B')
 BSS_END = S('__BSS_END_tail')
-for z in (a, b):
-    allocation=getattr(z,'allocation_end',BSS_END)
-    z.poke(allocation, bytes([0xa5]) * (0xff00 - allocation))   # stack watermark
+for z in (a, b): z.poke(z.allocation_end, bytes([0xa5]) * (0xff00 - z.allocation_end))   # stack watermark
 frames(4, a, b)
 if os.environ.get('ESP_HISTORY')=='1':
     a.poke(S('_hit_x'),[7,12]);b.poke(S('_hit_x'),[22,3])
@@ -87,6 +93,14 @@ for _ in range(200):
 print('in game: title_mode', a.read8(TM), b.read8(TM), 'net_active', a.read8(NA), b.read8(NA),
       '| seats', a.read8(NTOT), a.read(NT, 4).hex(), '| delay', a.read8(NDLY), b.read8(NDLY), flush=True)
 if os.environ.get('ESP_WALK')=='1':print('WALK: clear corridor, continuous bidirectional movement',flush=True)
+if os.environ.get('ESP_TIMED_LINK'):
+    from timed_link128 import TimedLink
+    frames(8,a,b)
+    link=TimedLink(a,b,int(os.environ['ESP_TIMED_LINK']))
+    frames(20,a,b)
+print('effective input delay:',*[z.read8(NDLY if z.reference else S('_esp_input_delay')) for z in (a,b)],flush=True)
+started=[z.now() for z in (a,b)];origin=[z.read8(S('_players')+i*16+3) for i,z in enumerate((a,b))]
+first_move=[None,None];crossing=[None,None]
 a.press('P'); b.press('O')                                       # both walk: inputs cross the network
 HP = 16
 seen = {'A': {}, 'B': {}}
@@ -100,6 +114,9 @@ def on_flush(i, z):                                # every frame of each machine
         x=z.read8(S('_players')+i*16+3)
         if x>=36:z.release('P');z.press('O')
         elif x<=2:z.release('O');z.press('P')
+    x=z.read8(S('_players')+i*16+3)
+    if x!=origin[i] and first_move[i] is None:first_move[i]=(z.now()-started[i])/3500
+    if ((i==0 and x>=36) or (i==1 and x<=2)) and crossing[i] is None:crossing[i]=(z.now()-started[i])/3500000
     name = 'AB'[i]
     f = z.read16(FN)
     if f >= HP: seen[name][(f // HP) * HP] = z.read16(SH).to_bytes(2, 'little').hex()
@@ -114,8 +131,13 @@ def step_a():                                      # A's own quanta, to time its
 done_a = done_b = 0
 end = a.now() + 120 * 3500000
 while (done_a < N or done_b < N) and a.now() < end:
-    done_a += step_a()
-    if b.step() == F: on_flush(1, b); done_b += 1
+    if 'link' not in globals() or link.now(0)<=link.now(1):done_a += step_a()
+    else:
+        if b.step()==F:on_flush(1,b);done_b+=1
+        continue
+    if 'link' not in globals():
+        if b.step()==F:on_flush(1,b);done_b+=1
+print('first movement ms',first_move,'crossing seconds',crossing,flush=True)
 print(f'frames: A {a.read16(FN)} B {b.read16(FN)} abort {a.read8(NAB)}/{b.read8(NAB)}', flush=True)
 common = sorted(set(seen['A']) & set(seen['B']))
 mism = [f for f in common if seen['A'][f] != seen['B'][f]]
@@ -126,9 +148,8 @@ print(f'done: {N} steps, {len(common)} hashed frames compared, {len(mism)} misma
       f'{len(a.uart.commands) + len(b.uart.commands)} ESP commands; {time.time() - t0:.0f} s')
 a.screenshot('build/esp01-128/net_A.png'); b.screenshot('build/esp01-128/net_B.png')
 for name, z in (('A', a), ('B', b)):
-    allocation=getattr(z,'allocation_end',BSS_END)
-    m = z.read(allocation, 0xff00 - allocation)
-    used_from = next((allocation + i for i, v in enumerate(m) if v != 0xa5), 0xff00)
-    print(f'{name}: stack reached {used_from:04x}, {used_from - allocation} bytes above the program left unused')
+    m = z.read(z.allocation_end, 0xff00 - z.allocation_end)
+    used_from = next((z.allocation_end + i for i, v in enumerate(m) if v != 0xa5), 0xff00)
+    print(f'{name}: stack reached {used_from:04x}, {used_from - z.allocation_end} bytes above the program left unused')
 sys.exit(1 if mism or any(aborts) or not common else 0)
 

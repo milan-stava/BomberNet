@@ -49,8 +49,8 @@ def rtt():
     z=BankZX();p=S('_outbuf')
     for values in ([1,1,1,1],[2,2,2,2],[3,3,3,3],[16,16,16,16],[255,255,255,255]):
         z.poke(p,values);z.call('_lobby_apply_rtt',p,values[0])
-        assert z.read8(S('_net_delay'))==max(1,min(8,(max(values)+1)//2))
-    print('PASS: measured delay 1..8 frames, slower connections retain margin')
+        assert z.read8(S('_net_delay'))==max(2,min(8,(max(values)+1)//2))
+    print('PASS: measured announced delay 2..8 frames, slower connections retain margin')
 
 def hud():
     z=BankZX();attrs=[4,6,7,1]

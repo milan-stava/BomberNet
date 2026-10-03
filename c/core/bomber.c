@@ -511,9 +511,9 @@ r9_keep:
     djnz r9_max
     srl a
     adc a,0
-    or a
-    jr nz,r9_nonzero
-    inc a
+    cp 2
+    jr nc,r9_nonzero
+    ld a,2
 r9_nonzero:
     cp 9
     jr c,r9_store

@@ -48,7 +48,34 @@ void rng_seed(uint16_t seed) {
 uint16_t hh;
 const uint8_t *hash_ptr;
 uint16_t hash_n;
+#ifdef ESP_FAST128
+static void h8(uint8_t b) __naked {
+ __asm
+    pop bc
+    pop hl
+    push hl
+    push bc
+    ld a,l
+    ld de,(_hh)
+    sla e
+    rl d
+    jr nc,h11_nocarry
+    inc e
+h11_nocarry:
+    xor e
+    add a,0x37
+    ld e,a
+    ld a,d
+    adc a,0x9e
+    ld d,a
+    ld (_hh),de
+    ret
+
+ __endasm;
+}
+#else
 static void h8(uint8_t b) { hh = (uint16_t)(((hh << 1) | (hh >> 15)) ^ b) + 0x9e37; }
+#endif
 static void h16(uint16_t v) { h8((uint8_t)v); h8((uint8_t)(v >> 8)); }
 static void hbytes(const uint8_t *p, uint16_t n) {
 #ifdef PLAT_ASM_HASH

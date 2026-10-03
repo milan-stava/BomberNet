@@ -25,6 +25,73 @@ static uint8_t f_state, f_op;              /* frame parser: 0 opcode, 1 length, 
 static uint16_t f_need, f_have;
 
 /* the frame header is written into the WS_HDR bytes in front of the text */
+#ifdef ESP_FAST128
+static uint8_t send_frame(uint8_t op, char *p, uint16_t n) __naked {
+ __asm
+    pop af
+    pop bc
+    pop hl
+    pop de
+    push de
+    push hl
+    push bc
+    push af
+    ld a,b
+    or a
+    jr nz,w11_size
+    ld a,c
+    cp 161
+    jr nc,w11_size
+    dec hl
+    ld (hl),0
+    dec hl
+    ld (hl),0
+    dec hl
+    ld (hl),0
+    dec hl
+    ld (hl),0
+    ld a,c
+    cp 126
+    jr c,w11_short
+    dec hl
+    ld (hl),c
+    dec hl
+    ld (hl),b
+    inc bc
+    inc bc
+    ld a,126
+w11_short:
+    or 128
+    dec hl
+    ld (hl),a
+    ld a,e
+    or 128
+    dec hl
+    ld (hl),a
+    ld de,6
+    ex de,hl
+    add hl,bc
+    push de
+    push hl
+    call _tcp_send
+    pop bc
+    pop bc
+    ld a,l
+    or a
+    ret z
+    ld a,1
+    ld (_ws_lost),a
+    xor a
+    ld (_ws_open_now),a
+    ld hl,9
+    ret
+w11_size:
+    ld hl,11
+    ret
+
+ __endasm;
+}
+#else
 static uint8_t send_frame(uint8_t op, char *p, uint16_t n) {
   uint8_t *h = (uint8_t *)p;
   if (n > WS_LINE_MAX) return 11;
@@ -35,6 +102,7 @@ static uint8_t send_frame(uint8_t op, char *p, uint16_t n) {
   if (tcp_send(h, (uint16_t)((uint8_t *)p - h) + n)) { ws_lost = 1; ws_open_now = 0; return 9; }
   return 0;
 }
+#endif
 
 uint8_t ws_send(char *text) {
   if (!ws_open_now) return 9;
@@ -351,4 +419,5 @@ void ws_close(void) {
   rx_pos = rx_len = 0;
   f_state = 0;
 }
+
 

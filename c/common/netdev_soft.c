@@ -17,6 +17,10 @@ const char *net_relay_host = NET_RELAY_HOST;
 uint16_t net_relay_port = NET_RELAY_PORT;
 
 uint8_t net_device;
+#ifdef ESP_FAST128
+uint8_t esp_peer_legacy,esp_peer_fast;
+extern uint8_t esp_input_delay;
+#endif
 
 #define WIN 16                   /* frames kept; a peer is at most the input delay (8) ahead */
 #define MSGQ 4
@@ -88,6 +92,54 @@ static uint8_t hex_decode(const char *h, uint8_t *dst, uint8_t max) {
 
 static char *put_s(char *p, const char *s) { while (*s) *p++ = *s++; return p; }
 
+#ifdef ESP_FAST128
+static char *put_u(char *p, uint16_t v) __naked {
+ __asm
+    pop af
+    pop hl
+    pop de
+    push de
+    push hl
+    push af
+    push ix
+    ld ix,u11_pow
+    ld bc,0x0400
+u11_digit:
+    push bc
+    ld c,(ix+0)
+    ld b,(ix+1)
+    ld a,'0'-1
+u11_sub:
+    inc a
+    or a
+    sbc hl,bc
+    jr nc,u11_sub
+    add hl,bc
+    pop bc
+    cp '0'
+    jr nz,u11_put
+    bit 0,c
+    jr z,u11_skip
+u11_put:
+    ld (de),a
+    inc de
+    ld c,1
+u11_skip:
+    inc ix
+    inc ix
+    djnz u11_digit
+    ld a,l
+    add a,'0'
+    ld (de),a
+    inc de
+    ex de,hl
+    pop ix
+    ret
+u11_pow: defw 10000,1000,100,10
+
+ __endasm;
+}
+#else
 static char *put_u(char *p, uint16_t v) {
   static const uint16_t pw[4] = {10000, 1000, 100, 10};
   uint8_t i, d, any = 0;
@@ -99,6 +151,7 @@ static char *put_u(char *p, uint16_t v) {
   *p++ = (char)('0' + v);
   return p;
 }
+#endif
 
 static char *put_hex(char *p, const uint8_t *b, uint8_t n) {
   static const char dg[] = "0123456789abcdef";
@@ -583,6 +636,9 @@ static uint8_t send_line(void) { return ws_send(out); }   /* out has WS_HDR byte
 /* open the room's socket, send the first line (already in out), wait for the reply */
 static uint8_t room_request(const char *path) {
   uint16_t t;
+#ifdef ESP_FAST128
+  esp_peer_legacy=esp_peer_fast=0;
+#endif
   if (!net_device) return E_NOLINK;
   pend = 1; pend_done = 0; pend_err = 0;
   s_state = NETST_READY;
@@ -908,6 +964,60 @@ uint8_t net_hash(uint16_t frame, uint16_t hash) {
   return 0;
 }
 
+#ifdef ESP_FAST128
+static uint8_t net_msg_send_general(uint8_t to, const uint8_t *d, uint8_t len) {
+  char *p;
+  if (s_state < NETST_INROOM) return E_NOROOM;
+  if (len > 32) len = 32;
+  p = put_s(out, "{\"op\":\"msg\",\"to\":");
+  p = to == 0xff ? put_s(p, "-1") : put_u(p, to);
+  put_s(put_hex(put_s(p, ",\"data\":\""), d, len), "\"}")[0] = 0;
+  send_line();
+  return 0;
+}
+uint8_t net_msg_send(uint8_t to, const uint8_t *d, uint8_t len) __naked {
+ __asm
+    push ix
+    ld ix,0
+    add ix,sp
+    ld c,(ix+4)
+    ld b,0
+    ld l,(ix+6)
+    ld h,(ix+7)
+    ld a,c
+    cp 2
+    jr nz,ms11_call
+    ld a,(hl)
+    cp 1
+    jr z,ms11_tag
+    cp 2
+    jr z,ms11_tag
+    cp 4
+    jr nz,ms11_call
+ms11_tag:
+    ld (ms11_buf),a
+    inc hl
+    ld a,(hl)
+    ld (ms11_buf+1),a
+    ld hl,ms11_buf
+    ld c,4
+ms11_call:
+    ld e,(ix+8)
+    ld d,0
+    push de
+    push hl
+    push bc
+    call _net_msg_send_general
+    pop bc
+    pop bc
+    pop bc
+    pop ix
+    ret
+ms11_buf: defb 0,0,0x45,11
+
+ __endasm;
+}
+#else
 uint8_t net_msg_send(uint8_t to, const uint8_t *d, uint8_t len) {
   char *p;
   if (s_state < NETST_INROOM) return E_NOROOM;
@@ -918,7 +1028,91 @@ uint8_t net_msg_send(uint8_t to, const uint8_t *d, uint8_t len) {
   send_line();
   return 0;
 }
+#endif
 
+#ifdef ESP_FAST128
+static uint8_t net_msg_recv_general(uint8_t *from, uint8_t *d) {
+  uint8_t i, n;
+  pump();
+  if (mq_head == mq_tail) return 0;
+  i = mq_tail & (MSGQ - 1);
+  *from = msgq[i].from;
+  n = msgq[i].len;
+  memcpy(d, msgq[i].data, n);
+  mq_tail++;
+  return n;
+}
+uint8_t net_msg_recv(uint8_t *from, uint8_t *d) __naked {
+ __asm
+    push ix
+    ld ix,0
+    add ix,sp
+    ld l,(ix+6)
+    ld h,(ix+7)
+    push hl
+    ld l,(ix+4)
+    ld h,(ix+5)
+    push hl
+    call _net_msg_recv_general
+    pop bc
+    pop bc
+    push hl
+    ld a,l
+    cp 2
+    jr c,mr11_done
+    ld c,a
+    ld l,(ix+6)
+    ld h,(ix+7)
+    ld a,(hl)
+    cp 4
+    jr nc,mr11_done
+    ld b,a
+    inc b
+    xor a
+    scf
+mr11_mask:
+    rla
+    djnz mr11_mask
+    ld b,a
+    ld l,(ix+4)
+    ld h,(ix+5)
+    ld a,(hl)
+    cp 1
+    jr z,mr11_type
+    cp 2
+    jr z,mr11_type
+    cp 4
+    jr nz,mr11_done
+mr11_type:
+    ld a,c
+    cp 2
+    jr z,mr11_legacy
+    cp 4
+    jr nz,mr11_done
+    inc hl
+    inc hl
+    ld a,(hl)
+    cp 0x45
+    jr nz,mr11_done
+    inc hl
+    ld a,(hl)
+    cp 11
+    jr nz,mr11_done
+    ld hl,_esp_peer_fast
+    jr mr11_save
+mr11_legacy:
+    ld hl,_esp_peer_legacy
+mr11_save:
+    ld a,(hl)
+    or b
+    ld (hl),a
+mr11_done:
+    pop hl
+    pop ix
+    ret
+ __endasm;
+}
+#else
 uint8_t net_msg_recv(uint8_t *from, uint8_t *d) {
   uint8_t i, n;
   pump();
@@ -930,4 +1124,46 @@ uint8_t net_msg_recv(uint8_t *from, uint8_t *d) {
   mq_tail++;
   return n;
 }
+#endif
 
+
+
+#ifdef ESP_FAST128
+/* Local lookahead; never changes the host announcement or shared simulation. */
+void esp_choose_delay(void) __naked {
+ __asm
+    ld a,(_net_delay)
+    ld (_esp_input_delay),a
+    cp 2
+    ret nz
+    ld a,(_s_members)
+    cp 2
+    ret nz
+    ld a,(_s_slots)
+    cp 2
+    ret nz
+    ld a,(_s_slot)
+    cp 2
+    ret nc
+    ld b,2
+    or a
+    jr z,ch11_mask
+    ld b,1
+ch11_mask:
+    ld a,(_esp_peer_fast)
+    and b
+    jr z,ch11_legacy
+    ld a,1
+    ld (_esp_input_delay),a
+    ret
+ch11_legacy:
+    ld a,(_esp_peer_legacy)
+    and b
+    ret z
+    xor a
+    ld (_esp_input_delay),a
+    ret
+
+ __endasm;
+}
+#endif

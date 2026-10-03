@@ -155,6 +155,91 @@ void draw_players(void) {
 
 /* Cursor keys move by one char when none of the four chars ahead is a wall,
  * pillar or fresh brick (in the draw buffer). Players pass through each other. */
+#ifdef ESP_FAST128
+static void move_player(player_t *p) __naked {
+ __asm
+    pop af
+    pop hl
+    push hl
+    push af
+    push ix
+    push hl
+    pop ix
+    ld a,(ix+2)
+    ld d,(ix+4)
+    ld e,(ix+3)
+    bit 1,a
+    jr z,m11_left
+    inc d
+    jr m11_check
+m11_left:
+    bit 3,a
+    jr z,m11_right
+    dec e
+    jr m11_check
+m11_right:
+    bit 2,a
+    jr z,m11_up
+    inc e
+    jr m11_check
+m11_up:
+    bit 0,a
+    jr z,m11_done
+    dec d
+m11_check:
+    ld l,d
+    ld h,0
+    add hl,hl
+    ld bc,_row_off
+    add hl,bc
+    ld c,(hl)
+    inc hl
+    ld b,(hl)
+    ld hl,_draw_buf
+    add hl,bc
+    ld c,e
+    ld b,0
+    add hl,bc
+    call m11_block
+    jr z,m11_done
+    inc hl
+    call m11_block
+    jr z,m11_done
+    ld bc,39
+    add hl,bc
+    call m11_block
+    jr z,m11_done
+    inc hl
+    call m11_block
+    jr z,m11_done
+    ld (ix+3),e
+    ld (ix+4),d
+    ld a,(ix+6)
+    srl a
+    add a,2
+    ld h,a
+    ld l,10
+    push hl
+    ld hl,14
+    push hl
+    call _plat_tone
+    pop bc
+    pop bc
+m11_done:
+    pop ix
+    ret
+m11_block:
+    ld a,(hl)
+    cp 0x88
+    ret z
+    cp 0x89
+    ret z
+    cp 0x80
+    ret
+
+ __endasm;
+}
+#else
 static void move_player(player_t *p) {
   uint8_t k = p->keys, d, x, y;
   const uint8_t *c;
@@ -173,6 +258,7 @@ static void move_player(player_t *p) {
   /* hook for walking animation (the original lost the direction here) */
   plat_tone(((uint16_t)((p->anim >> 1) + 2) << 8) | 0x0a, 14);
 }
+#endif
 
 /* Every 2nd frame: toggle the animation frame; alive -> move; dying -> step
  * the death animation (every 4th call) and raise life_lost at its end. */
@@ -267,4 +353,5 @@ static void draw_item(uint8_t code, uint8_t *present, uint8_t x, uint8_t y) {
 
 void draw_bonus(void) { draw_item(C_BONUS_TILE, &bonus_present, bonus_x, bonus_y); }
 void draw_exit(void)  { draw_item(C_EXIT_TILE, &exit_present, exit_x, exit_y); }
+
 
