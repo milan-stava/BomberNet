@@ -22,13 +22,6 @@ def offline():
  print('PASS: actual title -> offline match -> movement after DESYNC, drop, BREAK and timeout; stale hashing/wait flags cleared')
 
 def hud():
- for count in [1,2,3,4]:
-  a,b=BankZX(),BankZX();b.write(24000,Path('build/alpha11-reference/bomber').read_bytes(),ram_page=0)
-  for z in [a,b]:
-   z.poke(S('_player_count'),[count]);z.poke(S('_title_mode'),[0]);z.poke(S('_net_active'),[1])
-   z.call('_clear_buffers');z.poke(S('_draw_buf')+960,bytes([0x92,0xae])+bytes([32])*38)
-   z.call('_flush_screen')
-  assert a.read(0x4000,6912)==b.read(0x4000,6912),count
-  assert a.read8(S('_zx_bar_attr'))&0x38==0x18
- print('PASS: original purple HUD, pixels and attributes identical to alpha11 for 1/2/3/4 players')
+ from test_alpha14_128 import hud as current_hud
+ current_hud()
 if __name__=='__main__':offline();hud()

@@ -27,19 +27,67 @@ uint8_t *map_at(uint8_t x, uint8_t y) {
 #endif
 
 /* 2x2 tile from a 16-wide tile sheet: code, code+1 / code+16, code+17 */
+#ifdef ESP_FAST128
+void put_tile(uint8_t *p, uint8_t code) __naked {
+ __asm
+    pop af
+    pop bc
+    pop hl
+    push hl
+    push bc
+    push af
+    ld a,c
+    ld (hl),a
+    inc hl
+    inc a
+    ld (hl),a
+    ld de,39
+    add hl,de
+    add a,15
+    ld (hl),a
+    inc hl
+    inc a
+    ld (hl),a
+    ret
+ __endasm;
+}
+#else
 void put_tile(uint8_t *p, uint8_t code) {
   p[0] = code;
   p[1] = code + 1;
   p[SCREEN_W] = code + 16;
   p[SCREEN_W + 1] = code + 17;
 }
+#endif
 
+#ifdef ESP_FAST128
+void fill_2x2(uint8_t *p, uint8_t code) __naked {
+ __asm
+    pop af
+    pop bc
+    pop hl
+    push hl
+    push bc
+    push af
+    ld (hl),c
+    inc hl
+    ld (hl),c
+    ld de,39
+    add hl,de
+    ld (hl),c
+    inc hl
+    ld (hl),c
+    ret
+ __endasm;
+}
+#else
 void fill_2x2(uint8_t *p, uint8_t code) {
   p[0] = code;
   p[1] = code;
   p[SCREEN_W] = code;
   p[SCREEN_W + 1] = code;
 }
+#endif
 
 uint8_t is_2x2_clear(const uint8_t *p) {
   if (p[0] != C_SPACE) return p[0];
@@ -263,4 +311,5 @@ void composite_map(void) {
     if (map_layer[i] != C_SPACE) draw_buf[i] = map_layer[i];
 }
 #endif
+
 

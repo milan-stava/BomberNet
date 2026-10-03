@@ -429,55 +429,61 @@ claimed. Regression checks: `tests/test_alpha8_128.py`, and
 `ESP_HISTORY=1 ESP_WALK=1 python ports/esp01/tests/test_relay128.py`.
 
 
-## 128K alpha 9: input response, CPU work, sound and reset recovery
+## 128K alpha 14: label-only purple HUD and faster player drawing
 
-Load `bombernet_esp01_128_alpha9.tap`; its BASIC header is `9Bomberman`.
-Network play retains the original 60 ms simulation pace. ESP 128K now permits
-one frame of local input scheduling delay when the lobby round trip allows it,
-with ceil(round-trip/2) and the same maximum of eight. Longer/jittery connections
-still choose more frames. Zero-delay instant movement is not promised by this
-lockstep design. Two-player native tests have used 1/1 and mixed 1/2 delay
-against alpha 8 without hash mismatches; do not infer WAN latency from the
-accelerated emulator's wall time.
+Download `runable/14Bomberman.tap`. BASIC tape name begins `14Bomberma`
+(the Spectrum header has ten characters). The purple status bar now colors
+only P1/P2, or the compact player digits in three/four-player games. Scores,
+lives, time and stage use black ink. Single-player text remains black.
 
-WebSocket parsing, local vector send/poll, HUD number formatting, and the
-per-character player collision routine use assembly with equivalence checks.
-Typical empty reads also avoid paging after an actual empty receive: UART
-availability/overflow is still tested, and every bank call invalidates this
-shortcut because sends can pump bytes into the hidden ring. Zero-capacity
-reads cannot mark the ring empty. Tests cover these interactions explicitly.
-Controlled native-Z80 CPU timings at 3.5 MHz versus alpha 8:
-- Two-player HUD: 4.407 -> 2.255 ms; four-player HUD: 4.909 -> 2.838 ms.
-- Vector poll (without relay wait): 2.306 -> 1.138 ms.
-- Complete short WebSocket text: 0.994 -> 0.582 ms.
-- Player-char/collision samples: 0.112 -> 0.041 ms.
-- Cached empty RX: 0.052 ms, without paging.
-These isolate CPU work; physical screen-crossing speed still needs hardware
-verification. Emulator relay waits vary and are not physical timing results.
+Player rendering, the player loop, 2x2 tile writes and frame-timer updates
+use native Z80 routines. A fast check skips the C death-color pass when no
+visible player is dying. They preserve collision, death and scoring order.
+On the deterministic two-local-player CPU benchmark, excluding frame pacing,
+mean frame work falls from 40.019 ms to 38.247 ms at 3.5 MHz. This is CPU work,
+not a measured hardware screen-crossing time; 60 ms gameplay pacing is retained.
+AY audio and the shared input delay are unchanged.
 
-Steps use AY channel A, bomb animation uses B, death/pickup/enemy effects C.
-They retain separate pitches instead of one event overwriting every effect.
-The AY envelope is shared by the chip; events can retrigger it. All volumes
-are cleared at the next frame boundary so old pitches cannot be revived by
-later steps, and the first event also clears inherited AY volumes. Normal
-short sounds still finish with the calibrated one-shot envelope. Offline
-beeper and all simulation/death/scoring rules remain unchanged.
+Compatibility tests now run against the *unmodified published upstream ZX
+binary*, using emulated Spectranet versus the banked ESP UART. HOST/JOIN both
+pass; asymmetric cycle-timed network delivery with UART serialization,
+seven-byte Spectranet reads and 0..39 ms jitter also passes. Runs at 120 ms
+one-way base delay in both roles and 300 ms in the ESP-host role have matching
+state hashes and no abort. These are emulator tests, not multi-Element hardware
+tests or a claim that arbitrary AP/router behavior has been tested.
 
-Whole multiplayer HUD segments get the player's ink on the existing bar
-paper, including both P2 glyphs across their shared attribute square. This
-also applies to local multiplayer; 1-player/title rendering stays as before.
-Discovery now gives its first AT probe 300 ms instead of the network-command
-10-second timeout. If ESP is still transparent it retains conservative
-one-second guards around +++; inherited-session recovery tests measure
-12.22 -> 2.39 simulated seconds without requiring power reset. Real network
-operations keep their normal deadlines and power fallback remains available.
+A separate prior-match problem is reproducible in the original client:
+inactive hit coordinates remain hashed across matches. Our reset cannot clear
+those variables inside the peer's original browser game. Restarting the browser
+removes that state, consistent with the hardware report. The MZF served at
+`https://mzpico.com/files/bombernet/bombernet.mzf` was byte-identical to the
+upstream repository download (SHA256
+`07374256e573cfdcc8a3b4bdea5cc01d696d0ca41c25df5c8cb32f4ab6ff47d4`).
+Do not suppress DESYNC or require a shared AP as a workaround. Further hardware
+checks should include two/four Element devices and repeated online/offline games.
 
-The locally assembled, retested TAP is 52,505 bytes: game 40,940, bank 11,358,
-loader 100. Reclaimed AY continuation gives game end FDAC (595 bytes below
-FFFF). Final two-player walking stack watermark leaves at least 261 bytes
-above allocation. The exact compatibility link is `tests/link_alpha9_overlay128.py`,
-starting from checksum-verified alpha 8 images. It reuses freed code space;
-normal source builds include the routines directly. No new CI run is claimed.
-Regression checks are `tests/test_alpha9_128.py`, the UART/loader/frame suites,
-and native two/four-player relay matches, including prior-hit-history injection
-and interoperability with the previous image.
+Reproducibility: unpack `tests/alpha14-reference.zip` at repository root. It
+contains exact alpha13/alpha10 game references and the upstream binaries/map.
+With SjASMPlus 1.20.3 and the emulator dependencies:
+
+```
+python ports/esp01/tests/link_alpha14_overlay128.py /path/to/sjasmplus
+python ports/esp01/pack_game128.py
+python ports/esp01/tests/test_alpha14_128.py
+python ports/esp01/tests/test_alpha13_128.py
+python ports/esp01/tests/profile_alpha14.py
+UPSTREAM_TIMED_MS=120 ESP_MATCH=ports/esp01/tests/match_upstream14.py python ports/esp01/tests/test_relay128.py
+UPSTREAM_HOST=1 UPSTREAM_TIMED_MS=120 ESP_MATCH=ports/esp01/tests/match_upstream14.py python ports/esp01/tests/test_relay128.py
+```
+
+`UPSTREAM_HISTORY=1` is an intentional negative regression: inject different
+legitimate prior-hit coordinates before seeding, and the original client's first
+hash disagrees. It must fail, documenting the remaining cross-client history
+issue rather than claiming it was fixed solely by changing the ESP build.
+Native equivalence tests cover 512 tile writes, 2304 timer edges, 2048 four-player
+render/collision/scoring cases and 128 death-color cases. Offline restarts,
+WebSocket parsing, audio and loader checks also pass. TAP remains 52,512 bytes;
+game remains 40,947 bytes, driver bank 11,358, loader 100. Helpers reuse existing
+code gaps; the memory allocation end remains FDB3. Normal source builds include
+the same routines; this delivered TAP uses the reproducible local assembly
+link, not a newly claimed GitHub Actions build.

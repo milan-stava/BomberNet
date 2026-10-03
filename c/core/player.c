@@ -115,6 +115,92 @@ void player_killed(player_t *p) {
 }
 
 /* state 0/1 standing, 6..13 dying */
+#ifdef ESP_FAST128
+static void draw_player(player_t *p) __naked {
+ __asm
+    pop af
+    pop hl
+    push hl
+    push af
+    push ix
+    push hl
+    pop ix
+    ld a,(ix+5)
+    cp 6
+    jr c,d14_alive
+    sub 6
+    add a,a
+    ld c,a
+    ld a,0x4e
+    sub c
+    jr d14_code
+d14_alive:
+    or a
+    jr nz,d14_second
+    ld (ix+5),1
+    ld a,(ix+12)
+    jr d14_code
+d14_second:
+    ld a,(ix+13)
+d14_code:
+    ld c,a
+    ld l,(ix+4)
+    ld h,0
+    add hl,hl
+    ld de,_row_off
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    ld hl,_draw_buf
+    add hl,de
+    ld e,(ix+3)
+    ld d,0
+    add hl,de
+    ex de,hl
+    call d14_char
+    inc de
+    inc c
+    call d14_char
+    ld hl,39
+    add hl,de
+    ex de,hl
+    ld a,c
+    add a,15
+    ld c,a
+    call d14_char
+    inc de
+    inc c
+    call d14_char
+    pop ix
+    ret
+d14_char:
+    ld a,(de)
+    ld h,a
+    ld a,c
+    ld (de),a
+    ld a,h
+    cp 0xc0
+    ret c
+    ld h,a
+    ld a,(ix+5)
+    cp 6
+    ret nc
+    ld (ix+5),6
+    ld a,h
+    cp 0xe0
+    ret c
+    push bc
+    push de
+    push ix
+    call _player_killed
+    pop hl
+    pop de
+    pop bc
+    ret
+ __endasm;
+}
+#else
 static void draw_player(player_t *p) {
   uint8_t code;
   uint8_t *c;
@@ -132,10 +218,15 @@ static void draw_player(player_t *p) {
   put_player_char(p, c + SCREEN_W, code + 16);
   put_player_char(p, c + SCREEN_W + 1, code + 17);
 }
+#endif
 
 /* The death frames (40h-5Fh) are green in the table; there is no room for
  * coloured copies, so the attribute plane is patched after every flush. */
+#ifdef ESP_FAST128
+static void players_death_colour_full(void) {
+#else
 void players_death_colour(void) {
+#endif
   uint8_t i;
   for (i = 0; i < MAX_PLAYERS; i++) {
     player_t *p = &players[i];
@@ -147,11 +238,68 @@ void players_death_colour(void) {
   }
 }
 
+#ifdef ESP_FAST128
+void players_death_colour(void) __naked {
+ __asm
+    push ix
+    ld ix,_players
+    ld b,4
+d14_colour_loop:
+    ld a,(ix+0)
+    or a
+    jr z,d14_colour_next
+    ld a,(ix+5)
+    cp 6
+    jr c,d14_colour_next
+    ld a,(ix+8)
+    or a
+    jr z,d14_colour_full
+d14_colour_next:
+    ld de,16
+    add ix,de
+    djnz d14_colour_loop
+    pop ix
+    ret
+d14_colour_full:
+    pop ix
+    jp _players_death_colour_full
+ __endasm;
+}
+#endif
+
+#ifdef ESP_FAST128
+void draw_players(void) __naked {
+ __asm
+    push ix
+    ld ix,_players
+    ld b,4
+d14_player_loop:
+    ld a,(ix+0)
+    or a
+    jr z,d14_next
+    ld a,(ix+8)
+    or a
+    jr nz,d14_next
+    push bc
+    push ix
+    call _draw_player
+    pop hl
+    pop bc
+d14_next:
+    ld de,16
+    add ix,de
+    djnz d14_player_loop
+    pop ix
+    ret
+ __endasm;
+}
+#else
 void draw_players(void) {
   uint8_t i;
   for (i = 0; i < MAX_PLAYERS; i++)
     if (players[i].active && !players[i].life_lost) draw_player(&players[i]);
 }
+#endif
 
 /* Cursor keys move by one char when none of the four chars ahead is a wall,
  * pillar or fresh brick (in the draw buffer). Players pass through each other. */

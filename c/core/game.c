@@ -225,10 +225,31 @@ uint8_t rnd(void) {
   return (uint8_t)v;
 }
 
+#ifdef ESP_FAST128
+void tick_timer(ftimer_t *t) __naked {
+ __asm
+    pop af
+    pop hl
+    push hl
+    push af
+    ld a,(hl)
+    inc a
+    inc hl
+    cp (hl)
+    jr c,t14_store
+    xor a
+t14_store:
+    dec hl
+    ld (hl),a
+    ret
+ __endasm;
+}
+#else
 void tick_timer(ftimer_t *t) {
   uint8_t c = t->counter + 1;
   t->counter = (c >= t->period) ? 0 : c;
 }
+#endif
 
 /* Advance all frame timers, then present the frame. */
 /* tmr_explode and tmr_enemy_die are ticked by their users only (as in the
