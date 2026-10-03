@@ -6,7 +6,9 @@ from test_bank128 import BankZX, D, S
 def main():
     log=open(D/'relay-test.log','w')
     env=dict(os.environ,TCP_PORT='8766')
-    server=subprocess.Popen([sys.executable,'-m','uvicorn','relay:app','--app-dir','relay','--host','127.0.0.1','--port','8765','--log-level','warning'],stdout=log,stderr=log,env=env)
+    module='relay_reordered13:app' if os.environ.get('ESP_RELAY_REORDER')=='1' else 'relay:app'
+    appdir='ports/esp01/tests' if os.environ.get('ESP_RELAY_REORDER')=='1' else 'relay'
+    server=subprocess.Popen([sys.executable,'-m','uvicorn',module,'--app-dir',appdir,'--host','127.0.0.1','--port','8765','--log-level','warning'],stdout=log,stderr=log,env=env)
     try:
         for _ in range(200):
             try:

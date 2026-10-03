@@ -956,6 +956,12 @@ static void run_match(void) {
 }
 
 static void run_game(void) {
+  /* A previous network abort must not terminate the next offline match. */
+  net_active = net_abort = net_waiting = 0;
+  hash_period = 0;
+#ifdef ESP_FAST128
+  esp_defer_present = 0;
+#endif
   if (menu_net != NET_OFF && net_device == NETDEV_NET) {
     hash_period = 16;
     net_match_start();

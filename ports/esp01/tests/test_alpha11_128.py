@@ -59,7 +59,7 @@ def negotiation():
     for legacy,fast in [(0,0),(other,0),(0,other),(other,other)]:
      for name,v in [('_net_delay',delay),('_s_members',members),('_s_slots',slots),('_s_slot',slot),('_esp_peer_legacy',legacy),('_esp_peer_fast',fast)]:z.poke(S(name),[v])
      z.call('_esp_choose_delay')
-     expected=(1 if fast else 0 if legacy else 2) if delay==2 and members==slots==2 else delay
+     expected=delay
      assert z.read8(S('_esp_input_delay'))==expected
  z.poke(S('_net_device'),[0]);z.call('_room_request',datap)
  assert not z.read8(S('_esp_peer_fast')) and not z.read8(S('_esp_peer_legacy'))
@@ -83,7 +83,7 @@ def websocket_send():
  print('PASS: WebSocket short/extended lengths, max-length rejection and channel framing')
 
 def input_timing():
- for enhanced,delay in [(False,0),(True,1)]:
+ for enhanced,delay in [(False,2),(True,2)]:
   u=UART();u.payload=b'';z=BankZX(uart=u);p=S('_outbuf')
   z.poke(p,b'host\0');assert z.call('_tcp_open',p,80)==0
   for name,v in [('_ws_open_now',1),('_s_state',3),('_s_slot',0),('_s_slots',2),('_s_members',2),('_s_nbytes',4),('_s_full',3),('_net_delay',2),('_menu_local',1),('_net_total',2),('_esp_peer_fast',2 if enhanced else 0),('_esp_peer_legacy',0 if enhanced else 2)]:z.poke(S(name),[v])
@@ -98,7 +98,7 @@ def input_timing():
    assert z.read8(S('_players')+18)==8
   z.poke(S('_net_abort'),[9]);old=z.read16(S('_net_frame'));z.call('_net_lockstep_poll')
   assert z.read16(S('_net_frame'))==old and all(z.read8(S('_players')+i*16+2)==0 for i in range(4))
- print('PASS: local key acts in frame 0 against legacy, frame 1 against enhanced; peer keys and abort clearing preserved')
+ print('PASS: local key acts at the shared announced frame for legacy and enhanced peers; peer keys and abort clearing preserved')
 
 if __name__=='__main__':
  if Path('build/alpha10-reference/bomber').exists():cpu()

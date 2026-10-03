@@ -1181,41 +1181,13 @@ uint8_t net_msg_recv(uint8_t *from, uint8_t *d) {
 
 
 #ifdef ESP_FAST128
-/* Local lookahead; never changes the host announcement or shared simulation. */
+/* Use the lobby's shared lookahead on every client, including initial zeros. */
 void esp_choose_delay(void) __naked {
  __asm
     ld a,(_net_delay)
     ld (_esp_input_delay),a
-    cp 2
-    ret nz
-    ld a,(_s_members)
-    cp 2
-    ret nz
-    ld a,(_s_slots)
-    cp 2
-    ret nz
-    ld a,(_s_slot)
-    cp 2
-    ret nc
-    ld b,2
-    or a
-    jr z,ch11_mask
-    ld b,1
-ch11_mask:
-    ld a,(_esp_peer_fast)
-    and b
-    jr z,ch11_legacy
-    ld a,1
-    ld (_esp_input_delay),a
     ret
-ch11_legacy:
-    ld a,(_esp_peer_legacy)
-    and b
-    ret z
-    xor a
-    ld (_esp_input_delay),a
-    ret
-
  __endasm;
 }
+
 #endif

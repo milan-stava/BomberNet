@@ -48,6 +48,13 @@ def inst(name):
                 z.poke(S('_players')+3,bytes([1,1]))
                 z.poke(S('_players')+16+3,bytes([37,20]))
         z.on_breakpoint=walk_start
+    if os.environ.get('ESP_KEYS_ON_START')=='1':
+        z.set_breakpoint(S('_net_match_start'))
+        prior_start=z.on_breakpoint
+        def keys_on_start():
+            prior_start()
+            if z.pc==S('_net_match_start'):z.press('P' if name=='A' else 'O')
+        z.on_breakpoint=keys_on_start
     return z
 
 
@@ -71,7 +78,7 @@ for z in (a, b): z.poke(z.allocation_end, bytes([0xa5]) * (0xff00 - z.allocation
 frames(4, a, b)
 if os.environ.get('ESP_HISTORY')=='1':
     a.poke(S('_hit_x'),[7,12]);b.poke(S('_hit_x'),[22,3])
-a.poke(MM, [1]); a.poke(MP, [PLAYERS]); a.poke(MN, [1]); a.poke(ML, [LOCAL_A])
+a.poke(MM, [int(os.environ.get('GAME_MODE',1))]); a.poke(MP, [PLAYERS]); a.poke(MN, [1]); a.poke(ML, [LOCAL_A])
 b.poke(MN, [2]); b.poke(ML, [LOCAL_B])
 before = a.read(NC, 4)
 tap(a, 'SPACE', 4, b)                                            # A creates the room
@@ -151,5 +158,25 @@ for name, z in (('A', a), ('B', b)):
     m = z.read(z.allocation_end, 0xff00 - z.allocation_end)
     used_from = next((z.allocation_end + i for i, v in enumerate(m) if v != 0xa5), 0xff00)
     print(f'{name}: stack reached {used_from:04x}, {used_from - z.allocation_end} bytes above the program left unused')
+if os.environ.get('ESP_TEST_RESTART')=='1' and not mism and not any(aborts):
+    for z in (a,b):
+        z.release('P');z.release('O');z.release('SPACE');z.poke(NAB,[4])
+    frames(45,a,b)  # message deliberately ignores FIRE for its first 40 frames
+    for z in (a,b):z.press('SPACE')
+    frames(4,a,b)
+    for z in (a,b):z.release('SPACE')
+    frames(8,a,b)
+    assert all(z.read8(TM)==1 and z.read8(NA)==0 for z in (a,b)), 'network abort did not return to title'
+    for z in (a,b):z.poke(MN,[0]);z.press('SPACE')
+    frames(4,a,b)
+    for z in (a,b):z.release('SPACE')
+    frames(8,a,b)
+    for z in (a,b):
+        assert z.read8(TM)==0 and z.read8(NA)==0 and z.read8(NAB)==0
+        assert z.read8(S('_hash_period'))==0
+        z.poke(S('_map_layer'),bytes([32])*1000);z.poke(S('_players')+3,[5,5]);z.press('P')
+    frames(12,a,b)
+    assert all(z.read8(S('_players')+3)>5 and z.read8(NAB)==0 for z in (a,b))
+    print('PASS: real online match -> injected DESYNC -> PRESS FIRE -> title -> OFF -> offline movement on both clients',flush=True)
 sys.exit(1 if mism or any(aborts) or not common else 0)
 
