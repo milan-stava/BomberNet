@@ -607,3 +607,42 @@ python ports/esp01/tests/link_alpha18_overlay128.py /path/to/sjasmplus
 python ports/esp01/pack_game128.py
 python ports/esp01/tests/test_alpha18_128.py
 ```
+
+
+### Alpha 19: four-player colors and in-game BREAK
+
+Four-player HUD information and logical glyph positions remain byte-identical
+to the original. As for three players, attributes touching score glyphs stay
+black; life counts and labels use player ink. Parts of icons sharing score
+attribute cells remain black. Purple paper and stable attribute writes remain.
+
+CAPS SHIFT + SPACE (BREAK) now exits during ordinary COOP/DM gameplay, online
+or offline. It is checked before sending input or advancing simulation. Network
+exit uses the existing match-end/leave path and returns directly to the menu
+without the PRESS FIRE box. Existing BREAK while waiting for peers remains.
+SPACE or CAPS SHIFT alone does not exit; the next offline game resets abort.
+
+The exit test exposed a socket-close bug: parser cleanup clears es_opened, so
+command_close could skip CIPCLOSE after transparent-mode cleanup. Always attempt
+physical close; an ERROR for an already closed socket is harmless and cleanup
+still clears transaction state. This adds no commands to ordinary game frames.
+
+Native tests verify original HUD bytes, all three/four-player score columns,
+stable attributes, offline COOP/DM exit/restart and no simulation step on BREAK.
+Four independent relay clients retain matching hashes before exit; HOST then
+returns to menu, closes its TCP socket and creates a fresh room without reset.
+UART ring, transparent/command recovery and loader checks pass. These are
+emulator tests; hardware verification remains useful.
+
+Unpack `tests/alpha19-reference.zip` at repository root and run:
+
+```
+python ports/esp01/tests/link_alpha19_overlay128.py /path/to/sjasmplus
+python ports/esp01/pack_game128.py
+python ports/esp01/tests/test_alpha19_hud.py
+python ports/esp01/tests/test_break19.py
+ESP_MATCH=ports/esp01/tests/match_break19.py python ports/esp01/tests/test_relay128.py
+```
+
+Delivered TAP uses exact alpha18 assembly overlays; normal source includes
+the same changes. TAP/game/driver sizes and memory allocation remain unchanged.

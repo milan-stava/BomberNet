@@ -349,9 +349,8 @@ es_recv_fail:
 }
 void tcp_close(void) __naked {
  __asm
-    ld a,(es_opened)
-    or a
-    jr z,es_close_end
+    ; Parser resets also clear es_opened. Always close the physical socket,
+    ; including after transparent-mode cleanup; ERROR for no socket is harmless.
     ; Finish an outstanding passive read before issuing another command.
     call es_wait
     call es_clear
@@ -1026,3 +1025,4 @@ es_rx: defs 192
     SECTION code_compiler
  __endasm;
 }
+

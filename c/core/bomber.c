@@ -224,7 +224,27 @@ static void frame_common(void) {
 #ifdef ESP_FAST128
 uint8_t esp_defer_present;
 #endif
+#ifdef ESP_FAST128
+static uint8_t match_break_pressed(void) __naked {
+ __asm
+    ld bc,0xfefe
+    in a,(c)
+    and 1
+    ld hl,0
+    ret nz
+    ld b,0x7f
+    in a,(c)
+    and 1
+    ret nz
+    inc l
+    ret
+ __endasm;
+}
+#endif
 static void frame(void) {
+#ifdef ESP_FAST128
+  if (match_break_pressed()) { net_abort = NET_ABORT_BREAK; return; }
+#endif
 #ifdef ESP_FAST128
   esp_defer_present=1;
 #endif
@@ -1090,7 +1110,7 @@ static void run_game(void) {
   if (net_active) {
     uint8_t reason = net_abort;
     net_match_end();
-    if (reason) show_message(reason == NETST_DESYNC ? "DESYNC" : reason == NET_ABORT_BREAK ? "MATCH LEFT" : "CONNECTION LOST", "PRESS FIRE");
+    if (reason && reason != NET_ABORT_BREAK) show_message(reason == NETST_DESYNC ? "DESYNC" : reason == NET_ABORT_BREAK ? "MATCH LEFT" : "CONNECTION LOST", "PRESS FIRE");
   }
 }
 
