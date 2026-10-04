@@ -1,9 +1,9 @@
 """Count actual Z80 work with frame pacing excluded, before/after alpha14."""
 from pathlib import Path
-import statistics
+import statistics,os
 from test_bank128 import BankZX,UART,S
 from zxemu import run_together
-for ref in ['build/alpha13-reference','build/esp01-128']:
+for ref in [os.environ.get('PROFILE_REFERENCE','build/alpha13-reference'),'build/esp01-128']:
  u=UART();u.payload=b'';z=BankZX(uart=u)
  z.write(24000,Path(ref,'bomber').read_bytes(),ram_page=0);z.pc=24000
  run_together([z],S('_flush_screen'),4);z.poke(S('_menu_mode'),[1]);z.poke(S('_menu_players'),[2]);z.press('SPACE');run_together([z],S('_flush_screen'),4);z.release('SPACE');run_together([z],S('_flush_screen'),4)

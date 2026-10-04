@@ -46,6 +46,111 @@ static void draw_hud_compact(void) {
 }
 
 /* multiplayer HUD: "P1 000000 <man>3  P2 000000 <man>3  T0970 <enemy>1 S01" */
+#ifdef ESP_FAST128
+static void draw_hud_multi(void) __naked {
+ __asm
+    ld a,(_player_count)
+    cp 3
+    jp nc,_draw_hud_compact
+    push ix
+    ld ix,_players
+    ld de,_draw_buf+960
+    ld b,a
+    ld c,0
+    or a
+    jr z,h15_tail
+h15_player:
+    push bc
+    push de
+    ex de,hl
+    ld (hl),0x92
+    inc hl
+    push hl
+    ld l,c
+    ld h,0
+    ld de,_player_digit_codes
+    add hl,de
+    ld a,(hl)
+    pop hl
+    ld (hl),a
+    ld e,(ix+10)
+    ld d,(ix+11)
+    ld hl,(_hi_score)
+    or a
+    sbc hl,de
+    jr nc,h15_score
+    ld (_hi_score),de
+h15_score:
+    pop hl
+    push hl
+    ld bc,3
+    add hl,bc
+    push hl
+    push de
+    call _print_num5
+    pop bc
+    pop bc
+    pop hl
+    push hl
+    ld bc,10
+    add hl,bc
+    ld (hl),0x90
+    inc hl
+    ld a,(_game_mode)
+    cp 1
+    ld a,(ix+9)
+    jr nz,h15_lives
+    ld a,(ix+15)
+h15_lives:
+    ld (hl),a
+    pop hl
+    ld de,13
+    add hl,de
+    ex de,hl
+    pop bc
+    push de
+    ld de,16
+    add ix,de
+    pop de
+    inc c
+    djnz h15_player
+h15_tail:
+    ex de,hl
+    push hl
+    ld (hl),0x30
+    inc hl
+    push hl
+    ld hl,(_time_left)
+    push hl
+    call _print_num5
+    pop bc
+    pop bc
+    pop hl
+    ld de,6
+    add hl,de
+    ld (hl),0x20
+    inc hl
+    ld (hl),0x91
+    inc hl
+    ld a,(_enemies_left)
+    ld (hl),a
+    inc hl
+    inc hl
+    ld (hl),0x10
+    inc hl
+    push hl
+    ld a,(_stage)
+    ld l,a
+    ld h,0
+    push hl
+    call _print_num2
+    pop bc
+    pop bc
+    pop ix
+    ret
+ __endasm;
+}
+#else
 static void draw_hud_multi(void) {
   uint8_t *p = draw_at(0, HUD_ROW);
   uint8_t i;
@@ -64,6 +169,8 @@ static void draw_hud_multi(void) {
   p[7] = C_ENEMY_ICON; p[8] = enemies_left;
   p[10] = C_HUD_S; print_num2(p + 11, stage);
 }
+
+#endif
 
 static void draw_hud(void) {
   uint8_t *p = draw_at(0, HUD_ROW);
@@ -121,8 +228,21 @@ static void frame(void) {
 #ifdef ESP_FAST128
   esp_defer_present=1;
 #endif
+#ifdef ESP_FAST128
+  if (net_active) {
+    tick_timers();
+    input_poll();                 /* send before HUD/compositor work */
+    draw_hud();
+    draw_hud_icons();
+    composite_frame();
+  } else {
+    frame_common();
+    input_poll();
+  }
+#else
   frame_common();
   input_poll();
+#endif
   update_bombs();
   draw_bombs();
   place_bombs();

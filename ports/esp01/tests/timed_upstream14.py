@@ -32,7 +32,7 @@ class Link:
   for i,c in enumerate(clients):
    slot=i if clients[0].r('_menu_net')==1 else 1-i
    peer=clients[1-i]
-   for f in range(peer.r16('_s_base'),c.r16('_net_frame')+c.r('_net_delay')):
+   for f in range(peer.r16('_s_base'),c.r16('_net_frame')+c.r('_net_delay' if c.original else '_esp_input_delay')):
     msg=dict(op='input',frame=f,slot=slot,data=c.z.read(c.s('_data')+(f&15)*16+slot*4,4).hex())
     self.queue(1-i,json.dumps(msg,separators=(',',':')).encode(),0)
  def now(self,i):return self.cs[i].z.now()-self.start[i]

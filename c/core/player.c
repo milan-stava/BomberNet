@@ -410,6 +410,63 @@ static void move_player(player_t *p) {
 
 /* Every 2nd frame: toggle the animation frame; alive -> move; dying -> step
  * the death animation (every 4th call) and raise life_lost at its end. */
+#ifdef ESP_FAST128
+void players_anim_step(void) __naked {
+ __asm
+    ld a,(_tmr_player_anim)
+    or a
+    ret nz
+    push ix
+    ld ix,_players
+    ld b,4
+p15_anim:
+    ld a,(ix+0)
+    or a
+    jr z,p15_anim_next
+    ld a,(ix+6)
+    xor 2
+    ld (ix+6),a
+    ld a,(ix+5)
+    cp 6
+    jr c,p15_move
+    cp 13
+    jr nz,p15_die
+    ld (ix+8),1
+    jr p15_anim_next
+p15_die:
+    ld a,(ix+7)
+    inc a
+    ld (ix+7),a
+    cp 4
+    jr c,p15_anim_next
+    ld (ix+7),0
+    inc (ix+5)
+    ld h,(ix+5)
+    ld l,0
+    push bc
+    push hl
+    ld hl,32
+    push hl
+    call _plat_tone
+    pop hl
+    pop hl
+    pop bc
+    jr p15_anim_next
+p15_move:
+    push bc
+    push ix
+    call _move_player
+    pop hl
+    pop bc
+p15_anim_next:
+    ld de,16
+    add ix,de
+    djnz p15_anim
+    pop ix
+    ret
+ __endasm;
+}
+#else
 void players_anim_step(void) {
   uint8_t i;
   if (tmr_player_anim.counter != 0) return;
@@ -425,9 +482,77 @@ void players_anim_step(void) {
     plat_tone((uint16_t)p->state << 8, 32);
   }
 }
+#endif
 
 /* On the EXIT tile: the stage is regenerated (no points). On the BONUS
  * tile: random 16..142 points (x10 on screen) and the bonus disappears. */
+#ifdef ESP_FAST128
+void check_pickups(void) __naked {
+ __asm
+    push ix
+    ld ix,_players
+    ld b,4
+p15_pick:
+    ld a,(ix+0)
+    or a
+    jr z,p15_pick_next
+    ld a,(ix+5)
+    cp 6
+    jr nc,p15_pick_next
+    ld a,(_exit_y)
+    cp (ix+4)
+    jr nz,p15_bonus
+    ld a,(_exit_x)
+    cp (ix+3)
+    jr nz,p15_bonus
+    xor a
+    ld (_exit_present),a
+    inc a
+    ld (_exit_touched),a
+    pop ix
+    ret
+p15_bonus:
+    ld a,(_bonus_present)
+    or a
+    jr z,p15_pick_next
+    ld a,(_bonus_y)
+    cp (ix+4)
+    jr nz,p15_pick_next
+    ld a,(_bonus_x)
+    cp (ix+3)
+    jr nz,p15_pick_next
+    xor a
+    ld (_bonus_present),a
+    push bc
+    ld hl,0x0100
+    push hl
+    ld hl,0x30
+    push hl
+    call _plat_tone
+    pop hl
+    pop hl
+    call _rnd
+    ld a,l
+    and 63
+    add a,a
+    or 16
+    ld e,a
+    ld d,0
+    ld l,(ix+10)
+    ld h,(ix+11)
+    add hl,de
+    ld (ix+10),l
+    ld (ix+11),h
+    pop bc
+p15_pick_next:
+    ld de,16
+    add ix,de
+    djnz p15_pick
+    pop ix
+    ret
+ __endasm;
+}
+#else
 void check_pickups(void) {
   uint8_t i;
   for (i = 0; i < MAX_PLAYERS; i++) {
@@ -445,6 +570,7 @@ void check_pickups(void) {
     p->score += ((rnd() & 0x3f) << 1) | 0x10;
   }
 }
+#endif
 
 /* closest alive player to (x,y); falls back to player 0 */
 uint8_t nearest_player(uint8_t x, uint8_t y) {

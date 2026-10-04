@@ -1,0 +1,80 @@
+; @helper draw_bombs bomb_ticking
+    ld hl,_bombs
+    ld de,5
+    ld b,8
+e15_bdraw:
+    ld a,(hl)
+    or a
+    jp nz,_draw_bombs_full
+    add hl,de
+    djnz e15_bdraw
+    ret
+; @helper draw_enemies enemy_draw
+    ld hl,_enemies
+    ld de,6
+    ld b,8
+e15_edraw:
+    ld a,(hl)
+    or a
+    jp nz,_draw_enemies_full
+    add hl,de
+    djnz e15_edraw
+    ret
+; @helper update_bombs bomb_update
+    ld hl,_bombs
+    ld de,5
+    ld b,8
+e15_bupdate:
+    ld a,(hl)
+    or a
+    jp nz,_update_bombs_full
+    add hl,de
+    djnz e15_bupdate
+    ld a,(_bomb_anim)
+    xor 2
+    ld (_bomb_anim),a
+    ret
+; @helper enemy_ai enemy_ai
+    ld a,(_tmr_enemy_move)
+    or a
+    ret nz
+    ld hl,_enemies
+    ld de,6
+    ld b,8
+e15_ai:
+    ld a,(hl)
+    cp 1
+    jp z,_enemy_ai_full
+    add hl,de
+    djnz e15_ai
+    ld a,(_enemy_anim)
+    xor 2
+    ld (_enemy_anim),a
+    ret
+; @routine place_bombs bomb_owner_near
+    push ix
+    ld ix,_players
+    ld bc,0x0400
+e15_place:
+    ld a,(ix+0)
+    or a
+    jr z,e15_place_next
+    ld a,(ix+5)
+    cp 6
+    jr nc,e15_place_next
+    bit 4,(ix+2)
+    jr z,e15_place_next
+    push bc
+    ld l,c
+    ld h,0
+    push hl
+    call _place_bomb
+    pop hl
+    pop bc
+e15_place_next:
+    ld de,16
+    add ix,de
+    inc c
+    djnz e15_place
+    pop ix
+    ret

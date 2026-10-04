@@ -487,3 +487,42 @@ game remains 40,947 bytes, driver bank 11,358, loader 100. Helpers reuse existin
 code gaps; the memory allocation end remains FDB3. Normal source builds include
 the same routines; this delivered TAP uses the reproducible local assembly
 link, not a newly claimed GitHub Actions build.
+
+
+### Alpha 15: earlier input and less per-frame CPU work
+
+Input is sampled before HUD drawing/compositing in network frames. For rooms
+advertising two input frames, the ESP slot now chooses one frame and primes
+exactly that frame count. This removes about 60 ms from the scheduled-input
+component, not all network latency. Advertised delays of three through eight
+frames are retained; the chosen count never changes after match seeding.
+Frame numbers remain authoritative and the original peer keeps its own delay.
+
+Native HUD, player animation/pickup routines, empty-object scans and bomb-key
+filtering preserve the original state and animation side effects. Offline
+input ordering, 60 ms pacing, AY audio, UART baud and purple HUD colors remain
+unchanged. Only player labels are colored in multiplayer; other HUD text is black.
+
+An identical deterministic CPU benchmark against alpha14 fell from 38.247475 ms
+to 34.831121 ms per frame (8.93%). This excludes frame pacing and real network
+waiting and does not promise a 10% hardware crossing-time improvement. Native
+equivalence tests cover randomized HUD/player states and every live object slot.
+Four independent emulated ESP clients pass startup movement and state hashes.
+Unmodified upstream clients pass startup input, both host roles, timed network
+delivery and cooperative bombs. The original-client prior-match history issue
+described above remains; hash checks are not disabled.
+
+Unpack `tests/alpha15-reference.zip` at repository root, then run:
+
+```
+python ports/esp01/tests/link_alpha15_overlay128.py /path/to/sjasmplus
+python ports/esp01/pack_game128.py
+python ports/esp01/tests/test_alpha15_128.py
+PROFILE_REFERENCE=alpha14 python ports/esp01/tests/profile_alpha14.py
+UPSTREAM_FORCE_DELAY=2 UPSTREAM_KEYS_ON_START=1 UPSTREAM_TIMED_MS=120 ESP_MATCH=ports/esp01/tests/match_upstream14.py python ports/esp01/tests/test_relay128.py
+ESP_MATCH=ports/esp01/tests/match_four15.py python ports/esp01/tests/test_relay128.py
+```
+
+The TAP is built by the reproducible assembly overlay on exact alpha14 bytes.
+Game size and memory end remain unchanged: 40,947 bytes / FDB3. The BASIC block
+starts with version 15 (`15Bomberma`, limited to ten characters by TAP format).

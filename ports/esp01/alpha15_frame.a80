@@ -1,0 +1,22 @@
+; Preserve the shared lookahead and sample/send before HUD/compositing work.
+    ld a,1
+    ld (_esp_defer_present),a
+    ld a,(_net_active)
+    or a
+    jr z,f15_offline
+    call _tick_timers
+    call _input_poll
+    call _frame_common+3
+    call _frame+6
+    jr f15_present
+f15_offline:
+    call _frame_common
+    call _frame+3
+f15_present:
+    xor a
+    ld (_esp_defer_present),a
+    ld a,(_net_active)
+    or a
+    ret z
+    call _flush_screen
+    jp _players_death_colour

@@ -1181,10 +1181,16 @@ uint8_t net_msg_recv(uint8_t *from, uint8_t *d) {
 
 
 #ifdef ESP_FAST128
-/* Use the lobby's shared lookahead on every client, including initial zeros. */
+/* A slot's input delay is independent: prime exactly the frames it will not
+ * send live. Short-link two-frame rooms use one local frame; retain measured
+ * lookahead on slower links. Never reduce delay after priming. */
 void esp_choose_delay(void) __naked {
  __asm
     ld a,(_net_delay)
+    cp 2
+    jr nz,d15_store
+    dec a
+d15_store:
     ld (_esp_input_delay),a
     ret
  __endasm;

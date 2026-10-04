@@ -10,6 +10,8 @@ class Client:
   self.z=ZX(spectranet=True) if original else BankZX(real=True)
   if original:self.z.load('build/upstream-reference/bomber')
   else:self.z.pc=24000
+  if os.environ.get('UPSTREAM_KEYS_ON_START') or os.environ.get('UPSTREAM_FORCE_DELAY'):
+   self.z.set_breakpoint(self.s('_net_match_start'))
   self.f=self.s('_flush_screen');self.z.set_breakpoint(self.f);self.seen={}
  def s(self,n):return sym_from_map(self.path,n)
  def r(self,n):return self.z.read8(self.s(n))
@@ -17,6 +19,9 @@ class Client:
  def wr(self,n,b):self.z.poke(self.s(n),b)
  def step(self):
   p=self.z.step()
+  if p==self.s('_net_match_start'):
+   if os.environ.get('UPSTREAM_FORCE_DELAY'):self.wr('_net_delay',[int(os.environ['UPSTREAM_FORCE_DELAY'])])
+   if os.environ.get('UPSTREAM_KEYS_ON_START'):self.press('O' if self.original else 'P')
   if p==self.f and self.r('_net_active'):
    f=self.r16('_frame_no')
    if f>=16:self.seen[f//16*16]=self.r16('_state_hash')
@@ -59,10 +64,18 @@ if os.environ.get('UPSTREAM_TIMED_MS'):
  from timed_upstream14 import Link
  link=Link(both,int(os.environ['UPSTREAM_TIMED_MS']))
  print('timed link',os.environ['UPSTREAM_TIMED_MS'],flush=True)
+print('local delays',a.r('_esp_input_delay'),b.r('_net_delay'),flush=True)
+origin=[c.z.read8(c.s('_players')+(0 if c.r('_menu_net')==1 else 16)+3) for c in both];started=[c.z.now() for c in both];moved=[None,None]
 a.press('P');b.press('O')
+if os.environ.get('UPSTREAM_FIRE'):
+ a.press('SPACE');b.press('SPACE')
 for _ in range(100):
  frames(1)
+ for i,c in enumerate(both):
+  x=c.z.read8(c.s('_players')+(0 if c.r('_menu_net')==1 else 16)+3)
+  if x!=origin[i] and moved[i] is None:moved[i]=(c.z.now()-started[i])/3500
  if any(c.r('_net_abort') for c in both):break
+print('first movement ms',moved,flush=True)
 print('end',[(c.r16('_frame_no'),c.r('_net_abort'),c.seen) for c in both],flush=True)
 for c in both:c.z.screenshot('build/upstream-reference/'+('original' if c.original else 'esp')+'.png')
 common=set(a.seen)&set(b.seen);bad=[f for f in common if a.seen[f]!=b.seen[f]]
