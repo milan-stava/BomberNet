@@ -1014,6 +1014,9 @@ h16_count:
     cp 3
     jr z,h16_start
     ld de,h16_compact
+    cp 4
+    jr nz,h16_start
+    ld de,h17_three
 h16_start:
     ld hl,0x5ae1
     ld b,30
@@ -1054,6 +1057,8 @@ h16_next:
     ret
 h16_two: defb 1,1,0,0,0,0,0,1,1,2,2,2,0,0,0,0,0,2,2,0,0,0,0,0,0,0,0,0,0,0
 h16_compact: defb 1,0,0,0,0,1,1,2,2,0,0,0,2,2,2,3,0,0,0,0,3,3,4,4,0,0,0,4,4,4
+
+h17_three: defb 1,0,0,0,0,0,1,1,0,2,0,0,0,0,0,2,2,0,3,0,0,0,0,0,3,3,0,0,0,0
 
 fz_bar:  defb 0
 fz_row23: defb 0

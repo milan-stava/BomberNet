@@ -558,3 +558,32 @@ python ports/esp01/tests/test_alpha15_128.py
 
 The delivered `runable/16Bomberman.tap` uses this exact-byte assembly overlay;
 normal source includes the same renderer/helper. TAP size remains 52,512 bytes.
+
+
+### Alpha 17: align the three-player HUD
+
+Three-player blocks now start at logical columns 0, 12 and 24. Labels occupy
+one dedicated attribute cell, five score glyphs stay in black cells, and the
+life/win icon plus count start at local columns 8/9 in separate player-colored
+cells. Time uses `T` plus four digits in columns 35..39 (the stage starts at
+1000); the enemy-count field is omitted to make room. Four-player layout,
+one/two-player HUD, simulation and networking remain unchanged. The alpha16
+stable attribute update remains in place.
+
+Native tests verify every pixel column occupied by three-player score and time
+glyphs has black ink, life/win values match alpha16, and high-score updates
+remain exact. Randomized one/two/four-player HUD bytes match alpha16. Stable
+attribute writes, online/offline layouts and loader checks pass.
+
+Reproduce by unpacking `tests/alpha17-reference.zip` at repository root:
+
+```
+python ports/esp01/tests/link_alpha17_overlay128.py /path/to/sjasmplus
+python ports/esp01/pack_game128.py
+python ports/esp01/tests/test_alpha17_128.py
+```
+
+The delivered TAP uses the exact alpha16 assembly overlay; normal source
+includes the same compact HUD and attribute table. Game memory extent and TAP
+size remain unchanged. Four-player attribute granularity described for alpha16
+is unchanged; this release addresses the reported three-player layout.

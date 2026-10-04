@@ -26,6 +26,114 @@ static void load_stage_params(void) {
 
 /* ---- HUD (row 24) ---- */
 /* 3-4 players: "n ddddd<man>c " per player (10 chars), time only with 3 */
+#ifdef ESP_FAST128
+static void draw_hud_compact(void) __naked {
+ __asm
+    ld a,(_player_count)
+    push ix
+    ld ix,_players
+    ld de,_draw_buf+960
+    ld b,a
+    ld c,0
+    or a
+    jr z,h17_tail
+h17_player:
+    push bc
+    push de
+    ex de,hl
+    push hl
+    ld l,c
+    ld h,0
+    ld de,_player_digit_codes
+    add hl,de
+    ld a,(hl)
+    pop hl
+    ld (hl),a
+    ld e,(ix+10)
+    ld d,(ix+11)
+    ld hl,(_hi_score)
+    or a
+    sbc hl,de
+    jr nc,h17_score
+    ld (_hi_score),de
+h17_score:
+    pop hl
+    push hl
+    ld bc,2
+    add hl,bc
+    push hl
+    push de
+    call _print_num4
+    pop bc
+    pop bc
+    pop hl
+    push hl
+    ld bc,7
+    ld a,(_player_count)
+    cp 3
+    jr nz,h17_icon
+    inc c
+h17_icon:
+    add hl,bc
+    ld (hl),0x90
+    inc hl
+    ld a,(_game_mode)
+    cp 1
+    ld a,(ix+9)
+    jr nz,h17_lives
+    ld a,(ix+15)
+h17_lives:
+    ld (hl),a
+    pop hl
+    ld de,10
+    ld a,(_player_count)
+    cp 3
+    jr nz,h17_stride
+    ld e,12
+h17_stride:
+    add hl,de
+    ex de,hl
+    pop bc
+    push de
+    ld de,16
+    add ix,de
+    pop de
+    inc c
+    djnz h17_player
+h17_tail:
+    ld a,(_player_count)
+    cp 3
+    jr nz,h17_done
+    ; T + four time digits; time starts at 1000. Keep scratch on the stack.
+    ld hl,(_time_left)
+    push bc
+    push bc
+    push bc
+    ld d,h
+    ld e,l
+    ld hl,0
+    add hl,sp
+    push hl
+    push de
+    call _print_num4
+    pop bc
+    pop bc
+    ld hl,0
+    add hl,sp
+    ld de,_draw_buf+996
+    ld bc,4
+    ldir
+    pop bc
+    pop bc
+    pop bc
+    ld a,0x30
+    ld (_draw_buf+995),a
+h17_done:
+    pop ix
+    ret
+ __endasm;
+}
+#else
 static void draw_hud_compact(void) {
   uint8_t *p = draw_at(0, HUD_ROW);
   uint8_t i;
@@ -34,16 +142,18 @@ static void draw_hud_compact(void) {
     if (pl->score > hi_score) hi_score = pl->score;
     p[0] = C_PLAYER_DIGIT(i);
     print_num4(p + 2, pl->score);
-    p[7] = C_LIVES_ICON; p[8] = (game_mode == GAME_DM) ? pl->wins : pl->lives;
-    p += 10;
+    p[player_count == 3 ? 8 : 7] = C_LIVES_ICON; p[player_count == 3 ? 9 : 8] = (game_mode == GAME_DM) ? pl->wins : pl->lives;
+    p += player_count == 3 ? 12 : 10;
   }
-  if (player_count < 4) {
+  if (player_count == 3) {
+    uint8_t tmp[5];
+    p = draw_at(35, HUD_ROW);
     p[0] = C_HUD_T;
-    print_num5(p + 1, time_left);
-    p[6] = C_SPACE;
-    p[7] = C_ENEMY_ICON; p[8] = enemies_left;
+    print_num4(tmp, time_left);
+    memcpy(p + 1, tmp, 4); /* time starts at 1000; omit fixed score-style zero */
   }
 }
+#endif
 
 /* multiplayer HUD: "P1 000000 <man>3  P2 000000 <man>3  T0970 <enemy>1 S01" */
 #ifdef ESP_FAST128
