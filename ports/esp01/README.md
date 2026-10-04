@@ -526,3 +526,35 @@ ESP_MATCH=ports/esp01/tests/match_four15.py python ports/esp01/tests/test_relay1
 The TAP is built by the reproducible assembly overlay on exact alpha14 bytes.
 Game size and memory end remain unchanged: 40,947 bytes / FDB3. The BASIC block
 starts with version 15 (`15Bomberma`, limited to ten characters by TAP format).
+
+
+### Alpha 16: stable status-bar colors
+
+The renderer skips intermediate attribute stores for the active HUD row. The
+final HUD helper writes an attribute only when its intended value changes,
+instead of clearing the row to black and recoloring it on every frame. This
+removes the repeated temporary colors that could be seen during a ULA scan.
+Player labels plus the life/win icon and count use the corresponding player
+ink on purple paper. Single-player remains entirely black on purple.
+In the compact three/four-player layout, six-pixel glyphs share eight-pixel
+attribute cells: coloring the complete life group also colors boundary pixels
+of the adjacent fixed score zero. The two-player layout keeps these groups
+separate. This is Spectrum attribute granularity, not attribute flickering.
+
+No simulation, network-input policy or frame pacing is changed from alpha15.
+Native tests change scores, lives/wins and time in online/offline layouts for
+one through four players and trap actual attribute-store instructions: stable
+HUD attributes are never rewritten. Pixels/playfield attributes match alpha15;
+title rendering remains unchanged. Original-peer timed-network hashes pass.
+
+Reproduce from `tests/alpha16-reference.zip` at repository root:
+
+```
+python ports/esp01/tests/link_alpha16_overlay128.py /path/to/sjasmplus
+python ports/esp01/pack_game128.py
+python ports/esp01/tests/test_alpha16_128.py
+python ports/esp01/tests/test_alpha15_128.py
+```
+
+The delivered `runable/16Bomberman.tap` uses this exact-byte assembly overlay;
+normal source includes the same renderer/helper. TAP size remains 52,512 bytes.

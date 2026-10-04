@@ -884,6 +884,18 @@ fz_line:
     inc  ix
     djnz fz_line
 
+    ; The status row gets its final attributes once, in fz_hud_colors.
+    ; Never overwrite them with temporary scene/glyph colors during a flush.
+    ld a,(fz_bar)
+    or a
+    jr z,h16_scene_attrs
+    ld a,(_title_mode)
+    or a
+    jr nz,h16_scene_attrs
+    ld a,(fz_row23)
+    or a
+    ret nz
+h16_scene_attrs:
     ld   ix,fz_info         ; attributes: squares 0, 1, 2
     ld   hl,(fz_attr)
     ld   b,(ix+0)
@@ -991,58 +1003,57 @@ fz_hud_colors:
     ld a,(_title_mode)
     or a
     ret nz
-    ld a,(_zx_bar_attr)
-    and 0xf8
-    ld hl,0x5ae1
-    ld b,30
-h14_clear:
-    ld (hl),a
-    inc hl
-    djnz h14_clear
     ld a,(_player_count)
     cp 2
-    ret c
+    jr nc,h16_count
+    ld a,255
+h16_count:
+    inc a
     ld c,a
-    ld de,_player_attrs
+    ld de,h16_two
+    cp 3
+    jr z,h16_start
+    ld de,h16_compact
+h16_start:
     ld hl,0x5ae1
-    ld b,2
-    jr z,h14_two
-    ld b,1
-    call h14_run
+    ld b,30
+h16_loop:
+    ld a,(de)
     inc de
-    ld hl,0x5ae8
-    ld b,2
-    call h14_run
-    inc de
-    ld hl,0x5af0
-    ld b,1
-    call h14_run
-    ld a,c
-    cp 4
-    ret nz
-    inc de
-    ld hl,0x5af7
-    ld b,2
-    jr h14_run
-h14_two:
-    call h14_run
-    inc de
-    ld hl,0x5aea
-    ld b,3
-h14_run:
+    cp c
+    jr nc,h16_black
+    or a
+    jr z,h16_black
+    push hl
+    push de
+    dec a
+    ld l,a
+    ld h,0
+    ld de,_player_attrs
+    add hl,de
+    ld a,(hl)
+    and 7
+    pop de
+    pop hl
+    jr h16_combine
+h16_black:
+    xor a
+h16_combine:
+    push bc
+    ld c,a
     ld a,(_zx_bar_attr)
     and 0xf8
-    push bc
-    ld b,a
-    ld a,(de)
-    and 7
-    or b
+    or c
     pop bc
-h14_fill:
+    cp (hl)
+    jr z,h16_next
     ld (hl),a
+h16_next:
     inc hl
-    djnz h14_fill
+    djnz h16_loop
     ret
+h16_two: defb 1,1,0,0,0,0,0,1,1,2,2,2,0,0,0,0,0,2,2,0,0,0,0,0,0,0,0,0,0,0
+h16_compact: defb 1,0,0,0,0,1,1,2,2,0,0,0,2,2,2,3,0,0,0,0,3,3,4,4,0,0,0,4,4,4
 
 fz_bar:  defb 0
 fz_row23: defb 0
