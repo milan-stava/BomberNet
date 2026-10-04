@@ -587,3 +587,23 @@ The delivered TAP uses the exact alpha16 assembly overlay; normal source
 includes the same compact HUD and attribute table. Game memory extent and TAP
 size remain unchanged. Four-player attribute granularity described for alpha16
 is unchanged; this release addresses the reported three-player layout.
+
+
+### Alpha 18: original HUD contents, colors only
+
+Restore the original compact HUD builder and its complete information/layout
+including time format and enemy count. Only the three-player attribute map
+changes: every attribute cell touching score pixels stays black. Life/win
+counts remain colored; parts of icons in cells shared with score stay black.
+This preserves the original layout without coloring score edge pixels. Other
+layouts, simulation, network policy and stable attribute updates are unchanged.
+
+Native regression compares 256 randomized HUD buffers byte-for-byte with
+alpha16, checks every three-player score glyph column is black, and traps
+stable attribute writes. Reproduce with the existing alpha17-reference.zip:
+
+```
+python ports/esp01/tests/link_alpha18_overlay128.py /path/to/sjasmplus
+python ports/esp01/pack_game128.py
+python ports/esp01/tests/test_alpha18_128.py
+```
